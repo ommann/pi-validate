@@ -1,0 +1,29 @@
+{
+  "groups": [
+    [
+      "build"
+    ],
+    [
+      "lint"
+    ],
+    [
+      "test"
+    ],
+    [
+      "typescript-empty-lines"
+    ]
+  ],
+  "policies": {
+    "build": "agent",
+    "lint": "agent",
+    "test": "agent",
+    "typescript-empty-lines": "user"
+  },
+  "removed": [],
+  "useNix": true,
+  "configs": {
+    "typescript-empty-lines": {
+      "minEmptyLineRatio": 0.1
+    }
+  }
+}
