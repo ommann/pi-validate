@@ -64,6 +64,28 @@ describe('ValidationClient optimistic saves', () => {
     expect(client.pending()).toBe(false);
   });
 
+  it('detects in the background and queues edits without disabling the form', async () => {
+    client.requestDetection();
+    expect(client.pending()).toBe(false);
+    expect(client.editingDisabled()).toBe(false);
+    await Promise.resolve();
+    const detection = http.expectOne('api/detect');
+
+    const plan = { ...snapshot.plan, useNix: true };
+    const saved = client.save(plan);
+    expect(client.editingDisabled()).toBe(false);
+    expect(client.plan()).toEqual(plan);
+    http.expectNone('api/plan');
+
+    detection.flush(snapshot);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(client.plan()).toEqual(plan);
+    expect(client.editingDisabled()).toBe(false);
+    http.expectOne('api/plan').flush({ ...snapshot, plan });
+    await saved;
+    expect(client.pending()).toBe(false);
+  });
+
   it('rolls back a rejected edit and reports the error', async () => {
     const saved = client.save({ ...snapshot.plan, policies: { build: 'off' } });
     expect(client.plan()?.policies['build']).toBe('off');

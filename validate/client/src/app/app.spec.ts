@@ -66,6 +66,17 @@ describe('App', () => {
     expect(compiled.querySelector<HTMLDetailsElement>('#catalog')?.open).toBe(false);
     expect(compiled.querySelectorAll('#available-steps .run-row.step-row')).toHaveLength(2);
 
+    const detect = vi.spyOn(page.client, 'requestDetection').mockImplementation(() => {});
+    const catalog = compiled.querySelector<HTMLDetailsElement>('#catalog')!;
+    for (const open of [true, false, true]) {
+      catalog.open = open;
+      await new Promise(resolve => setTimeout(resolve, 0));
+      await fixture.whenStable();
+      expect(page.client.pending()).toBe(false);
+      expect(page.client.editingDisabled()).toBe(false);
+    }
+    expect(detect).toHaveBeenCalledTimes(2);
+
     const filter = compiled.querySelector<HTMLInputElement>('#step-search')!;
     filter.value = 'lint';
     filter.dispatchEvent(new Event('input'));

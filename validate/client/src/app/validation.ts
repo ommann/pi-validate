@@ -20,12 +20,14 @@ export class ValidationClient {
 
   readonly pending = signal(false);
   readonly saving = signal(false);
+  private readonly detecting = signal(false);
   readonly restarting = signal(false);
   readonly error = signal('');
 
   readonly editingDisabled = computed(() => this.restarting() || !this.state()
-    || (!this.saving() && (this.pending() || !!this.state()?.busy)));
-  readonly disabled = computed(() => this.editingDisabled() || this.pending());
+    || !!this.state()?.runs.some(run => !run.finishedAt)
+    || (!this.saving() && this.pending()));
+  readonly disabled = computed(() => this.editingDisabled() || this.pending() || this.detecting());
 
   private readonly http = inject(HttpClient);
   private readonly serverControl = inject(ServerControl);
@@ -62,6 +64,7 @@ export class ValidationClient {
     this.saveQueue = Promise.resolve();
     this.saveRevision++;
     this.saving.set(false);
+    this.detecting.set(false);
     this.base = projectPath(cwd);
     this.state.set(null);
     this.pending.set(false);
@@ -188,11 +191,25 @@ export class ValidationClient {
   }
 
   private async checkAvailability(): Promise<void> {
-    if (!this.detectionRequested || this.disabled()) return;
+    if (!this.detectionRequested || this.disabled()) { return; }
 
+    const generation = this.generation;
     this.detectionRequested = false;
+    this.detecting.set(true);
 
-    await this.action(async generation => this.accept(await this.api<Snapshot>('/api/detect', {}), generation));
+    // Detection and saves share a queue, not a form-wide loading state.
+    this.saveQueue = this.saveQueue.then(async () => {
+      if (generation !== this.generation) { return; }
+
+      try {
+        this.accept(await this.api<Snapshot>('/api/detect', {}), generation);
+      } catch (error) {
+        if (generation === this.generation) { this.error.set(String(error)); }
+      } finally {
+        if (generation === this.generation) { this.detecting.set(false); }
+      }
+    });
+    await this.saveQueue;
   }
 
   private async poll(): Promise<void> {

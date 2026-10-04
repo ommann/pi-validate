@@ -2,12 +2,16 @@
   "groups": [
     [
       "build",
-      "test",
-      "lint",
+      "lint"
+    ],
+    [
       "typescript-empty-lines"
     ],
     [
       "never-applicable"
+    ],
+    [
+      "test"
     ]
   ],
   "policies": {
