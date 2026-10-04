@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, linkedSignal, signal, untracked } from '@angular/core';
+import { DatePipe } from '@angular/common';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { CdkDrag, CdkDragHandle, CdkDropList, CdkDropListGroup, moveItemInArray, transferArrayItem } from '@angular/cdk/drag-drop';
@@ -12,7 +13,7 @@ import { ResultCard } from '@app/result-card/result-card';
 
 @Component({
   selector: 'app-project-page',
-  imports: [FormsModule, ResultCard, CdkDrag, CdkDragHandle, CdkDropList, CdkDropListGroup],
+  imports: [DatePipe, FormsModule, ResultCard, CdkDrag, CdkDragHandle, CdkDropList, CdkDropListGroup],
   providers: [ValidationClient],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './project-page.html',
@@ -123,10 +124,6 @@ export class ProjectPage {
 
   count(run: Run, status: string): number {
     return run.results.filter(result => result.status === status).length;
-  }
-
-  startedAt(run: Run): string {
-    return new Date(run.startedAt).toLocaleString();
   }
 
   run(): void {

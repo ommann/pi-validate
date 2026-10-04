@@ -4,7 +4,7 @@ import { languages, sourceFiles } from "../source-files.ts";
 import type { Context, Step } from "../step.ts";
 
 export default {
-  name: "no-subscribe",
+  name: "ast-grep-no-subscribe",
   async detect({ cwd }: Context) {
     for await (const file of sourceFiles(cwd)) {
       if (file) return true;

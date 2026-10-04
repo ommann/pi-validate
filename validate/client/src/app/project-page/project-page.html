@@ -85,7 +85,7 @@
     <div id="history" class="run-list" aria-label="Run history">
       @for (run of visibleRuns(); track run.id) {
         <button class="run-row" [attr.aria-pressed]="run.id === selectedId()" (click)="selectRun(run)">
-          <span>{{ startedAt(run) }}</span>
+          <span>{{ run.startedAt | date:'medium' }}</span>
           <span class="run-caller policy-pill" [attr.data-caller]="run.caller" [attr.data-policy]="run.caller">{{ run.caller === 'user' ? 'User' : 'Agent' }}</span>
           <span>{{ run.finishedAt ? count(run, 'failed') + ' failed' : 'Running' }}</span>
           <span>{{ run.id.slice(0, 8) }}</span>

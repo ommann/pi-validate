@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Validation, loadSteps } from "./server/core.ts";
-import step from "./server/steps/no-subscribe.ts";
+import step from "./server/steps/ast-grep-no-subscribe.ts";
 
 async function fixture(operation: (cwd: string) => Promise<void>) {
   const cwd = await mkdtemp(join(tmpdir(), "no-subscribe-test-"));
@@ -11,7 +11,7 @@ async function fixture(operation: (cwd: string) => Promise<void>) {
   finally { await rm(cwd, { recursive: true, force: true }); }
 }
 
-test("no-subscribe is discovered automatically", async () => {
+test("ast-grep-no-subscribe is discovered automatically", async () => {
   expect((await loadSteps()).some(candidate => candidate.name === step.name)).toBe(true);
 });
 

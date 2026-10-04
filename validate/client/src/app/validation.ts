@@ -1,6 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core';
-import { firstValueFrom, interval, Subject, Subscription, takeUntil } from 'rxjs';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { firstValueFrom, interval, Subject, takeUntil, tap } from 'rxjs';
 
 import { projectPath } from '@shared/project-path';
 import { editPlan } from '@shared/plan.js';
@@ -32,12 +33,14 @@ export class ValidationClient {
 
   private polling = false;
   private detectionRequested = true;
-  private timer?: Subscription;
 
   constructor() {
+    toSignal(interval(500).pipe(tap(() => {
+      if (this.base) void this.poll();
+    })));
+
     inject(DestroyRef).onDestroy(() => {
       this.generation++;
-      this.timer?.unsubscribe();
       this.cancel.next();
       this.cancel.complete();
     });
@@ -46,7 +49,6 @@ export class ValidationClient {
   openProject(cwd: string): void {
     this.generation++;
     this.cancel.next();
-    this.timer?.unsubscribe();
 
     this.base = projectPath(cwd);
     this.state.set(null);
@@ -57,7 +59,6 @@ export class ValidationClient {
     this.detectionRequested = true;
 
     void this.poll();
-    this.timer = interval(500).subscribe(() => void this.poll());
   }
 
   private async api<T>(path: string, body?: unknown): Promise<T> {
@@ -164,7 +165,6 @@ export class ValidationClient {
     if (this.disabled()) return;
 
     const generation = ++this.generation;
-    this.timer?.unsubscribe();
     this.cancel.next();
     this.restarting.set(true);
     this.pending.set(true);
@@ -181,7 +181,6 @@ export class ValidationClient {
         this.restarting.set(false);
         this.pending.set(false);
         this.polling = false;
-        this.timer = interval(500).subscribe(() => void this.poll());
       }
     }
   }

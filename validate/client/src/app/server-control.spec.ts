@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { firstValueFrom } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ServerControl } from '@app/server-control';
@@ -24,9 +25,9 @@ describe('ServerControl', () => {
     vi.useRealTimers();
   });
 
-  it('waits for the new server, tolerating the old instance and connection failures', () => {
+  it('waits for the new server, tolerating the old instance and connection failures', async () => {
     const ready = vi.fn();
-    control.restart().subscribe(ready);
+    const restarted = firstValueFrom(control.restart()).then(ready);
 
     const restart = http.expectOne('/api/restart');
     expect(restart.request.method).toBe('POST');
@@ -43,29 +44,28 @@ describe('ServerControl', () => {
 
     vi.advanceTimersByTime(200);
     http.expectOne('/api/health').flush(health('new'));
+    await restarted;
     expect(ready).toHaveBeenCalledExactlyOnceWith(health('new'));
 
     vi.advanceTimersByTime(1000);
     http.expectNone('/api/health');
   });
 
-  it('reports a busy-server rejection without polling', () => {
-    const failed = vi.fn();
-    control.restart().subscribe({ error: failed });
+  it('reports a busy-server rejection without polling', async () => {
+    const rejected = expect(firstValueFrom(control.restart())).rejects.toThrow('A project is busy');
     http.expectOne('/api/restart').flush({ error: 'A project is busy' }, { status: 409, statusText: 'Conflict' });
 
-    expect(failed.mock.calls[0][0].message).toBe('A project is busy');
+    await rejected;
     vi.advanceTimersByTime(1000);
     http.expectNone('/api/health');
   });
 
-  it('bounds the entire restart operation to ten seconds', () => {
-    const failed = vi.fn();
-    control.restart().subscribe({ error: failed });
+  it('bounds the entire restart operation to ten seconds', async () => {
+    const rejected = expect(firstValueFrom(control.restart())).rejects.toThrow('Server restart timed out. Reload the page to retry.');
     http.expectOne('/api/restart').flush({ restarting: true, instanceId: 'old' });
 
     vi.advanceTimersByTime(10_000);
 
-    expect(failed.mock.calls[0][0].message).toBe('Server restart timed out. Reload the page to retry.');
+    await rejected;
   });
 });

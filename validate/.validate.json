@@ -9,15 +9,27 @@
     ],
     [
       "typescript-empty-lines",
-      "no-discarded-router-navigation",
-      "no-clear-interval"
+      "ast-grep-no-discarded-router-navigation",
+      "ast-grep-no-clear-interval"
+    ],
+    [
+      "eslint-rare"
+    ],
+    [
+      "ast-grep-no-sanitization-bypass",
+      "ast-grep-no-subscribe",
+      "ast-grep-no-dynamic-code"
     ]
   ],
   "policies": {
     "build": "agent",
+    "eslint-rare": "agent",
     "lint": "agent",
-    "no-clear-interval": "agent",
-    "no-discarded-router-navigation": "agent",
+    "ast-grep-no-clear-interval": "agent",
+    "ast-grep-no-discarded-router-navigation": "agent",
+    "ast-grep-no-dynamic-code": "off",
+    "ast-grep-no-sanitization-bypass": "off",
+    "ast-grep-no-subscribe": "off",
     "test": "agent",
     "typescript-empty-lines": "agent"
   },

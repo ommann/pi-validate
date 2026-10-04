@@ -5,7 +5,7 @@ import type { Context, Step } from "../step.ts";
 import { languages, sourceFiles } from "../source-files.ts";
 
 export default {
-  name: "no-clear-interval",
+  name: "ast-grep-no-clear-interval",
   async detect({ cwd }: Context) {
     for await (const file of sourceFiles(cwd)) {
       if (file) return true;

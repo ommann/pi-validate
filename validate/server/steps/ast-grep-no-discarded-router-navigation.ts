@@ -14,7 +14,7 @@ async function* routerFiles(cwd: string) {
 }
 
 export default {
-  name: "no-discarded-router-navigation",
+  name: "ast-grep-no-discarded-router-navigation",
   async detect({ cwd }: Context) {
     for await (const entry of routerFiles(cwd)) {
       if (entry) return true;

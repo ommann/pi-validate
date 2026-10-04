@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Validation, loadSteps } from "./server/core.ts";
-import step from "./server/steps/no-discarded-router-navigation.ts";
+import step from "./server/steps/ast-grep-no-discarded-router-navigation.ts";
 
 async function fixture(source: string, operation: (cwd: string) => Promise<void>) {
   const cwd = await mkdtemp(join(tmpdir(), "router-navigation-test-"));

@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Validation, agentReport, loadSteps } from "./server/core.ts";
-import step from "./server/steps/no-clear-interval.ts";
+import step from "./server/steps/ast-grep-no-clear-interval.ts";
 
 async function fixture(operation: (cwd: string) => Promise<void>) {
   const cwd = await mkdtemp(join(tmpdir(), "clear-interval-test-"));
@@ -37,7 +37,7 @@ test("reports actual calls across JS/TS variants with source positions", () => f
   expect(run.results[0]!.exitCode).toBe(1);
   const report = agentReport(run);
   expect(report.exitCode).toBe(1);
-  expect(report.failures[0]!.name).toBe("no-clear-interval");
+  expect(report.failures[0]!.name).toBe("ast-grep-no-clear-interval");
   for (const extension of extensions) {
     expect(report.failures[0]!.output).toContain(`src/example.${extension}:2:1: clearInterval usage: clearInterval(timer)`);
   }
