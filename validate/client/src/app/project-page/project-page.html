@@ -2,25 +2,17 @@
   <header>
     <h1>Validate</h1>
     <div class="row">
-      <button id="run" [disabled]="client.disabled()" (click)="run()">{{ client.state()?.busy ? 'Running…' : client.pending() ? 'Working…' : 'Run' }}</button>
-      <button id="restart-server" [disabled]="client.disabled()" (click)="client.restart()">{{ client.restarting() ? 'Restarting…' : 'Restart' }}</button>
+      <button id="run" [disabled]="client.disabled()" [attr.aria-busy]="client.state()?.busy || client.pending()" (click)="run()">Run</button>
+      <button id="restart-server" [disabled]="client.disabled()" [attr.aria-busy]="client.restarting()" (click)="client.restart()">Restart</button>
     </div>
   </header>
-
-  <form id="project-form" (ngSubmit)="openProject()">
-    <label for="project">Project folder</label>
-    <div class="row">
-      <input id="project" name="project" required placeholder="/absolute/path/to/project" [ngModel]="project()" (ngModelChange)="project.set($event)" [disabled]="client.disabled()">
-      <button id="open" [disabled]="client.disabled()">Open</button>
-    </div>
-  </form>
 
   <p id="error" role="alert">{{ client.error() }}</p>
 
   <section>
     <h2>Validation steps</h2>
     <label class="execution-option">
-      <input id="use-nix" type="checkbox" [checked]="client.state()?.plan?.useNix" [disabled]="client.disabled()" (change)="useNix(checked($event))">
+      <input id="use-nix" type="checkbox" [checked]="client.state()?.plan?.useNix" [disabled]="client.editingDisabled()" (change)="useNix(checked($event))">
       Use project’s Nix shell
     </label>
 
@@ -30,30 +22,29 @@
           <div
             class="run-list step-list" [class.phantom-section]="$last"
             [attr.aria-label]="$last ? 'New section drop area' : 'Section ' + (index + 1) + ' steps'"
-            cdkDropList [cdkDropListData]="group" [cdkDropListDisabled]="client.disabled()"
+            cdkDropList [cdkDropListData]="group" [cdkDropListDisabled]="client.editingDisabled()"
             (cdkDropListDropped)="drop($event)"
           >
             @for (name of group; track name) {
               <details
                 #stepDetails class="step-details" [class.step-separated]="$index > 0" [open]="openSteps.has(name)"
                 (toggle)="toggleStep(name, stepDetails.open)"
-                cdkDrag [cdkDragData]="name" [cdkDragDisabled]="client.disabled()"
+                cdkDrag [cdkDragData]="name" [cdkDragDisabled]="client.editingDisabled()"
               >
-                <summary class="run-row step-row" (click)="summaryClick($event)">
+                <summary class="run-row step-row" [class.step-unavailable]="unavailable(name)" [attr.aria-label]="name + ': ' + detection(name)" (click)="summaryClick($event)">
                   <span class="step-name" tabindex="0" cdkDragHandle (keydown)="stepKey($event, name)">{{ name }}</span>
-                  <span>{{ detection(name) }}</span>
                   <div>
                     <div class="policy-choices" role="group" [attr.aria-label]="name + ' policy'">
                       @for (policy of policies; track policy) {
-                        <button type="button" [attr.aria-pressed]="client.state()?.plan?.policies?.[name] === policy" [disabled]="client.disabled()" (click)="client.state()?.plan?.policies?.[name] !== policy && client.changePlan(name, policy)">{{ policy === 'agent' ? 'Agent' : policy === 'user' ? 'User' : 'Off' }}</button>
+                        <button type="button" [attr.aria-pressed]="client.state()?.plan?.policies?.[name] === policy" [disabled]="client.editingDisabled()" (click)="client.state()?.plan?.policies?.[name] !== policy && client.changePlan(name, policy)">{{ policy === 'agent' ? 'Agent' : policy === 'user' ? 'User' : 'Off' }}</button>
                       }
+                      <button type="button" [attr.aria-label]="name + ': Remove step from plan'" [disabled]="client.editingDisabled()" (click)="client.changePlan(name, 'remove')">×</button>
                     </div>
                   </div>
-                  <button class="remove-step" [attr.aria-label]="name + ': Remove step from plan'" [disabled]="client.disabled()" (click)="client.changePlan(name, 'remove')">×</button>
                 </summary>
                 <div class="step-details-body">
                   @for (entry of parameters(name); track entry[0]) {
-                    <label class="step-parameter">{{ entry[1].label }}<input type="number" [value]="config(name, entry[0], entry[1])" [attr.min]="entry[1].min" [attr.max]="entry[1].max" [attr.step]="entry[1].step" [disabled]="client.disabled()" (change)="client.changeConfig(name, entry[0], numberValue($event))"></label>
+                    <label class="step-parameter">{{ entry[1].label }}<input type="number" [value]="config(name, entry[0], entry[1])" [attr.min]="entry[1].min" [attr.max]="entry[1].max" [attr.step]="entry[1].step" [disabled]="client.editingDisabled()" (change)="client.changeConfig(name, entry[0], numberValue($event))"></label>
                   } @empty {
                     No parameters.
                   }
@@ -66,14 +57,22 @@
     </div>
 
     <details #catalog id="catalog" (toggle)="catalog.open && client.requestDetection()">
-      <summary>Add steps</summary>
-      <input id="step-search" type="search" placeholder="Search available steps…" aria-label="Search available steps" [value]="search()" (input)="search.set(value($event))">
-      <div id="available-steps">
+      <summary>Disabled steps</summary>
+      <input id="step-search" type="search" placeholder="Filter disabled steps…" aria-label="Filter disabled steps" [value]="search()" (input)="search.set(value($event))">
+      <div id="available-steps" class="run-list">
         @for (step of available(); track step.name) {
-          <div class="catalog-row"><span>{{ step.name }}</span><button [attr.aria-label]="step.name + ': Add this step to the execution plan'" [disabled]="client.disabled()" (click)="client.changePlan(step.name, 'add')">Add</button></div>
+          <div class="run-row step-row" [class.step-unavailable]="unavailable(step.name)" [attr.aria-label]="step.name + ': ' + detection(step.name)">
+            <span>{{ step.name }}</span>
+            <div class="policy-choices" role="group" [attr.aria-label]="step.name + ' policy'">
+              @for (policy of policies; track policy) {
+                <button type="button" [attr.aria-pressed]="false" [disabled]="client.editingDisabled()" (click)="enableStep(step.name, policy)">{{ policy === 'agent' ? 'Agent' : policy === 'user' ? 'User' : 'Off' }}</button>
+              }
+              <button type="button" [attr.aria-label]="step.name + ': Already removed from plan'" disabled>×</button>
+            </div>
+          </div>
         } @empty {
           @if (client.state()) {
-            {{ search().trim() ? 'No matching available steps.' : 'All installed steps are already in the plan.' }}
+            {{ search().trim() ? 'No matching disabled steps.' : 'No disabled steps.' }}
           }
         }
       </div>
@@ -87,16 +86,15 @@
         <button class="run-row" [attr.aria-pressed]="run.id === selectedId()" (click)="selectRun(run)">
           <span>{{ run.startedAt | date:'medium' }}</span>
           <span class="run-caller policy-pill" [attr.data-caller]="run.caller" [attr.data-policy]="run.caller">{{ run.caller === 'user' ? 'User' : 'Agent' }}</span>
-          <span>{{ run.finishedAt ? count(run, 'failed') + ' failed' : 'Running' }}</span>
-          <span>{{ run.id.slice(0, 8) }}</span>
+          <span [attr.aria-label]="count(run, 'passed') + ' passed, ' + count(run, 'failed') + ' failed, ' + count(run, 'skipped') + ' skipped'">{{ count(run, 'passed') }}/{{ run.results.length - count(run, 'skipped') }}{{ run.finishedAt ? '' : ' …' }}</span>
         </button>
       }
     </div>
     <button id="history-more" class="more" [hidden]="(client.state()?.runs?.length ?? 0) <= 5" (click)="expandedHistory.set(!expandedHistory())">{{ expandedHistory() ? 'Less' : 'More (' + ((client.state()?.runs?.length ?? 0) - 5) + ')' }}</button>
-    <p id="summary">@if (selectedRun(); as run) {<span class="run-caller" [attr.data-caller]="run.caller">{{ run.caller === 'user' ? 'User' : 'Agent' }}</span> · {{ run.finishedAt ? 'Finished' : 'Running' }} · {{ count(run, 'passed') }} passed · {{ count(run, 'failed') }} failed · {{ count(run, 'skipped') }} skipped} @else {No runs yet.}</p>
+    <p id="summary" [hidden]="selectedRun()">No runs yet.</p>
     <div id="results">
       @if (selectedRun(); as run) {
-        @for (result of run.results; track selectedId() + ':' + result.name) {
+        @for (result of runResults(); track selectedId() + ':' + result.name) {
           <app-result-card [result]="result" [caller]="run.caller" />
         }
       }

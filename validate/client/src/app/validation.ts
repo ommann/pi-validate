@@ -19,10 +19,13 @@ export class ValidationClient {
   });
 
   readonly pending = signal(false);
+  readonly saving = signal(false);
   readonly restarting = signal(false);
   readonly error = signal('');
 
-  readonly disabled = computed(() => this.restarting() || !this.state() || this.pending() || !!this.state()?.busy);
+  readonly editingDisabled = computed(() => this.restarting() || !this.state()
+    || (!this.saving() && (this.pending() || !!this.state()?.busy)));
+  readonly disabled = computed(() => this.editingDisabled() || this.pending());
 
   private readonly http = inject(HttpClient);
   private readonly serverControl = inject(ServerControl);
@@ -31,6 +34,10 @@ export class ValidationClient {
   private generation = 0;
   private base = '';
 
+  private optimisticPlan?: Plan;
+  private confirmedPlan?: Plan;
+  private saveQueue: Promise<void> = Promise.resolve();
+  private saveRevision = 0;
   private polling = false;
   private detectionRequested = true;
 
@@ -50,6 +57,11 @@ export class ValidationClient {
     this.generation++;
     this.cancel.next();
 
+    this.optimisticPlan = undefined;
+    this.confirmedPlan = undefined;
+    this.saveQueue = Promise.resolve();
+    this.saveRevision++;
+    this.saving.set(false);
     this.base = projectPath(cwd);
     this.state.set(null);
     this.pending.set(false);
@@ -81,7 +93,9 @@ export class ValidationClient {
   }
 
   private accept(next: Snapshot, generation: number): void {
-    if (generation === this.generation && !this.restarting()) this.state.set(next);
+    if (generation === this.generation && !this.restarting()) {
+      this.state.set(this.optimisticPlan ? { ...next, plan: this.optimisticPlan } : next);
+    }
   }
 
   private async action(operation: (generation: number) => Promise<unknown>): Promise<void> {
@@ -110,7 +124,43 @@ export class ValidationClient {
   }
 
   save(plan: Plan): Promise<void> {
-    return this.action(async generation => this.accept(await this.api<Snapshot>('/api/plan', plan), generation));
+    if (this.editingDisabled()) { return Promise.resolve(); }
+
+    const generation = this.generation;
+    const revision = ++this.saveRevision;
+    if (!this.saving()) { this.confirmedPlan = this.state()!.plan; }
+    this.optimisticPlan = plan;
+    this.saving.set(true);
+    this.pending.set(true);
+    this.error.set('');
+    this.state.update(state => state ? { ...state, plan } : state);
+
+    this.saveQueue = this.saveQueue.then(async () => {
+      if (generation !== this.generation) { return; }
+
+      try {
+        const next = await this.api<Snapshot>('/api/plan', plan);
+        if (generation === this.generation) {
+          this.confirmedPlan = next.plan;
+          if (revision === this.saveRevision) { this.optimisticPlan = undefined; }
+          this.accept(next, generation);
+        }
+      } catch (error) {
+        if (generation === this.generation) {
+          this.error.set(String(error));
+          if (revision === this.saveRevision) {
+            this.optimisticPlan = undefined;
+            this.state.update(state => state ? { ...state, plan: this.confirmedPlan! } : state);
+          }
+        }
+      } finally {
+        if (generation === this.generation && revision === this.saveRevision) {
+          this.saving.set(false);
+          this.pending.set(false);
+        }
+      }
+    });
+    return this.saveQueue;
   }
 
   changePlan(name: string, operation: Operation): void {

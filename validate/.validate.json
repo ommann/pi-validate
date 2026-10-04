@@ -1,43 +1,40 @@
 {
   "groups": [
     [
-      "build"
-    ],
-    [
+      "build",
+      "test",
       "lint",
-      "test"
+      "typescript-empty-lines"
     ],
     [
-      "typescript-empty-lines",
-      "ast-grep-no-discarded-router-navigation",
-      "ast-grep-no-clear-interval"
-    ],
-    [
-      "eslint-rare"
-    ],
-    [
-      "ast-grep-no-sanitization-bypass",
-      "ast-grep-no-subscribe",
-      "ast-grep-no-dynamic-code"
+      "never-applicable"
     ]
   ],
   "policies": {
-    "build": "agent",
-    "eslint-rare": "agent",
-    "lint": "agent",
     "ast-grep-no-clear-interval": "agent",
     "ast-grep-no-discarded-router-navigation": "agent",
     "ast-grep-no-dynamic-code": "off",
     "ast-grep-no-sanitization-bypass": "off",
     "ast-grep-no-subscribe": "off",
+    "build": "agent",
+    "eslint-rare": "agent",
+    "lint": "agent",
+    "never-applicable": "agent",
     "test": "agent",
-    "typescript-empty-lines": "agent"
+    "typescript-empty-lines": "user"
   },
-  "removed": [],
+  "removed": [
+    "ast-grep-no-dynamic-code",
+    "ast-grep-no-subscribe",
+    "ast-grep-no-discarded-router-navigation",
+    "eslint-rare",
+    "ast-grep-no-sanitization-bypass",
+    "ast-grep-no-clear-interval"
+  ],
   "useNix": true,
   "configs": {
     "typescript-empty-lines": {
-      "minEmptyLineRatio": 0.1
+      "minEmptyLineRatio": 0.51
     }
   }
 }

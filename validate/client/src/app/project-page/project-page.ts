@@ -1,19 +1,16 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, linkedSignal, signal, untracked } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { Router } from '@angular/router';
-import { FormsModule } from '@angular/forms';
 import { CdkDrag, CdkDragHandle, CdkDropList, CdkDropListGroup, moveItemInArray, transferArrayItem } from '@angular/cdk/drag-drop';
 import type { CdkDragDrop } from '@angular/cdk/drag-drop';
 
-import { activeGroups } from '@shared/plan.js';
-import { projectPath } from '@shared/project-path';
+import { activeGroups, editPlan } from '@shared/plan.js';
 import { ValidationClient } from '@app/validation';
 import type { Parameter, Policy, Run } from '@app/models';
 import { ResultCard } from '@app/result-card/result-card';
 
 @Component({
   selector: 'app-project-page',
-  imports: [DatePipe, FormsModule, ResultCard, CdkDrag, CdkDragHandle, CdkDropList, CdkDropListGroup],
+  imports: [DatePipe, ResultCard, CdkDrag, CdkDragHandle, CdkDropList, CdkDropListGroup],
   providers: [ValidationClient],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './project-page.html',
@@ -21,9 +18,6 @@ import { ResultCard } from '@app/result-card/result-card';
 export class ProjectPage {
   readonly cwd = input.required<string>();
   readonly client = inject(ValidationClient);
-  private readonly router = inject(Router);
-
-  readonly project = signal('');
   readonly search = signal('');
 
   readonly expandedHistory = signal(false);
@@ -48,6 +42,9 @@ export class ProjectPage {
   });
 
   readonly selectedRun = computed(() => this.client.state()?.runs.find(run => run.id === this.selectedId()));
+  readonly runResults = computed(() => this.selectedRun()?.results.filter(result =>
+    result.status === 'running' || result.status === 'passed' || result.status === 'failed',
+  ) ?? []);
 
   readonly visibleRuns = computed(() => {
     const runs = [...(this.client.state()?.runs ?? [])].reverse();
@@ -63,7 +60,6 @@ export class ProjectPage {
     effect(() => {
       const cwd = this.cwd();
 
-      this.project.set(cwd);
       this.search.set('');
 
       this.expandedHistory.set(false);
@@ -85,16 +81,11 @@ export class ProjectPage {
     });
   }
 
-  openProject(): void {
-    const cwd = this.project().trim();
+  enableStep(name: string, policy: Policy): void {
+    const plan = this.client.plan();
+    if (!plan) { return; }
 
-    if (!cwd.startsWith('/')) {
-      this.client.error.set('Use an absolute project path.');
-      return;
-    }
-
-    this.router.navigateByUrl(projectPath(cwd.replace(/\/+$/, '') || '/'))
-      .catch(error => this.client.error.set(String(error)));
+    void this.client.save(editPlan(editPlan(plan, name, 'add'), name, policy));
   }
 
   useNix(value: boolean): void {
@@ -109,6 +100,12 @@ export class ProjectPage {
 
   config(name: string, key: string, parameter: Parameter): number {
     return Number(this.client.state()?.plan.configs?.[name]?.[key] ?? parameter.default);
+  }
+
+  unavailable(name: string): boolean {
+    const detection = this.client.state()?.steps.find(step => step.name === name)?.detection;
+
+    return detection?.applicable === false && !detection.error;
   }
 
   detection(name: string): string {
@@ -139,7 +136,7 @@ export class ProjectPage {
   }
 
   async drop(event: CdkDragDrop<string[], string[], string>): Promise<void> {
-    if (!event.isPointerOverContainer || this.client.disabled()) return;
+    if (!event.isPointerOverContainer || this.client.editingDisabled()) { return; }
 
     const plan = this.client.plan();
     if (!plan) return;
