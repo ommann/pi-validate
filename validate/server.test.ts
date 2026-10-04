@@ -75,21 +75,34 @@ test("HTTP UI keeps full logs while agent calls expose only promoted failures", 
     const page = await fetch(url);
     expect(page.status).toBe(200);
     const html = await page.text();
-    expect(html).toContain("Runs");
-    expect(html).toContain('<button id="run" disabled>Run</button>');
-    expect(html).not.toContain('id="status"');
-    expect(html).not.toContain('id="run-agent"');
-    expect(html).not.toContain('id="run-user"');
-    expect(html).toContain('class="run-list"');
-    expect(html).toContain('id="history-more"');
-    expect(html).not.toContain('<select');
-    expect(page.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'none'");
-    expect((await fetch(new URL("/app.js", url))).status).toBe(200);
+    expect(page.url).toBe(projectUrl.href);
+    expect(page.headers.get("Content-Type")).toContain("text/html");
+    expect(html).toContain('<title>Validate</title>');
+    expect(html).toContain('<app-root ngCspNonce="');
+
+    const nonce = html.match(/ngCspNonce="([^"]+)"/)![1];
+    const csp = page.headers.get("Content-Security-Policy")!;
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(csp).toContain(`'nonce-${nonce}'`);
+    expect(csp).not.toContain("'unsafe-inline'");
+
+    const scriptPath = html.match(/<script src="([^"]+)"/)![1];
+    const stylePath = html.match(/<link rel="stylesheet" href="([^"]+)"/)![1];
+    for (const [path, type] of [[scriptPath, "javascript"], [stylePath, "text/css"]]) {
+      const asset = await fetch(new URL(path!, url));
+      expect(asset.status).toBe(200);
+      expect(asset.headers.get("Content-Type")).toContain(type!);
+    }
+
+    const reloaded = await (await fetch(projectUrl)).text();
+    expect(reloaded.match(/ngCspNonce="([^"]+)"/)![1]).not.toBe(nonce);
+    expect((await fetch(new URL("/app.js", url))).status).toBe(404);
+    expect((await fetch(new URL("/client/missing.js", url))).status).toBe(404);
     expect((await post("/api/detect", {}, { Origin: "https://evil.example" })).status).toBe(403);
     expect((await fetch(new URL("api/detect", projectUrl), { method: "POST", body: "{}" })).status).toBe(403);
     expect((await post("/api/plan", { groups: [["lint"], ["test"]], policies: { lint: "user", test: "agent" } })).status).toBe(200);
     const detected = await (await post("/api/detect", {})).json();
-    expect(detected.steps.filter((step: any) => !["build", "typescript-empty-lines"].includes(step.name)).every((step: any) => step.detection.applicable)).toBe(true);
+    expect(detected.steps.filter((step: any) => ["lint", "test"].includes(step.name)).every((step: any) => step.detection.applicable)).toBe(true);
     const report = await (await post("/api/run", { cwd, caller: "agent" })).json();
     expect(report).toEqual({ exitCode: 0, failures: [] });
     let state = await (await fetch(new URL("api/state", projectUrl))).json();

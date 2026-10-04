@@ -1,0 +1,17 @@
+{
+  "^/$": {
+    "target": "http://127.0.0.1:3210",
+    "changeOrigin": true,
+    "headers": { "Origin": "http://127.0.0.1:3210" }
+  },
+  "^/.+/api/(state|plan|detect|run)$": {
+    "target": "http://127.0.0.1:3210",
+    "changeOrigin": true,
+    "headers": { "Origin": "http://127.0.0.1:3210" }
+  },
+  "/api/**": {
+    "target": "http://127.0.0.1:3210",
+    "changeOrigin": true,
+    "headers": { "Origin": "http://127.0.0.1:3210" }
+  }
+}

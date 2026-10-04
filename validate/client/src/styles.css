@@ -66,6 +66,12 @@ button {
   cursor: pointer;
 }
 
+button,
+summary {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 button:hover {
   border-color: #99bfff;
 }
@@ -116,7 +122,7 @@ label {
   align-items: center;
 }
 
-.step-details + .step-details {
+.step-details.step-separated {
   border-top: 1px solid #354057;
 }
 
@@ -145,18 +151,14 @@ label {
   line-height: 1;
 }
 
-.group-divider {
-  padding: 5px 0;
+.phantom-section {
+  min-height: 28px;
+  border-style: dashed;
+  background: #111926;
 }
 
-.group-divider span {
-  display: block;
-  border-top: 1px solid #62708a;
-}
-
-.group-divider.drop-target span {
+.phantom-section.cdk-drop-list-dragging {
   border-color: #99bfff;
-  box-shadow: 0 0 0 1px #99bfff;
 }
 
 .step-name {
@@ -167,12 +169,12 @@ label {
   outline: 1px solid #99bfff;
 }
 
-.step-group.drop-target .step-list {
-  border-color: #99bfff;
+.cdk-drag-placeholder {
+  opacity: 0.45;
 }
 
-.step-row.dragging {
-  opacity: 0.45;
+.cdk-drag-preview {
+  box-sizing: border-box;
 }
 
 #catalog {
@@ -258,11 +260,12 @@ button[aria-pressed="true"] {
   overflow: hidden;
 }
 
-.run-list:empty {
+.run-list:empty:not(.phantom-section) {
   display: none;
 }
 
 .run-row {
+  box-sizing: border-box;
   display: grid;
   background: #111926;
   grid-template-columns: minmax(170px, 2fr) minmax(100px, 1fr) minmax(80px, 1fr) 80px;
@@ -279,7 +282,8 @@ button[aria-pressed="true"] {
   border-top: 1px solid #354057;
 }
 
-.run-row:hover {
+.run-row:hover,
+.cdk-drag-preview .step-row {
   background: #26354b;
 }
 

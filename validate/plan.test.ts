@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { activeGroups, editPlan, dropStep } from "./ui/plan.js";
+import { activeGroups, editPlan, dropStep } from "./shared/plan.js";
 
 const plan = { groups: [["lint"], ["test"]], policies: { lint: "agent", test: "user", extra: "off" }, removed: ["extra"] };
 

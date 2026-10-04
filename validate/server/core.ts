@@ -3,27 +3,9 @@ import { stat, rename } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import type { Context, Step } from "./step.ts";
 
-export type Policy = "agent" | "user" | "off";
-export type Plan = { groups: string[][]; policies: Record<string, Policy>; removed?: string[]; useNix?: boolean; configs?: Record<string, Record<string, unknown>> };
-export type Detection = { applicable: boolean; error?: string; checkedAt: string };
-export type Result = {
-  name: string;
-  policy: Policy;
-  status: "pending" | "running" | "passed" | "failed" | "skipped";
-  output: string;
-  reason?: string;
-  exitCode?: number;
-  startedAt?: string;
-  finishedAt?: string;
-};
-export type Run = {
-  id: string;
-  caller: "agent" | "user";
-  startedAt: string;
-  finishedAt?: string;
-  plan: Plan;
-  results: Result[];
-};
+import type { Plan, Detection, Run, Snapshot } from "../shared/contracts.ts";
+
+export type { Policy, Plan, Detection, Result, Run } from "../shared/contracts.ts";
 export type AgentReport = { exitCode: number; failures: { name: string; output: string; exitCode: number }[] };
 
 const now = () => new Date().toISOString();
@@ -128,7 +110,7 @@ export class Validation {
     return new Validation(cwd, steps, plan, configFile);
   }
 
-  snapshot() {
+  snapshot(): Snapshot {
     return { cwd: this.cwd, busy: this.busy, plan: this.plan, steps: this.steps.map(step => ({ name: step.name, parameters: step.parameters ?? {}, detection: this.detections[step.name] ?? null })), runs: this.runs };
   }
 

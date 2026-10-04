@@ -4,20 +4,22 @@
       "build"
     ],
     [
-      "lint"
-    ],
-    [
+      "lint",
       "test"
     ],
     [
-      "typescript-empty-lines"
+      "typescript-empty-lines",
+      "no-discarded-router-navigation",
+      "no-clear-interval"
     ]
   ],
   "policies": {
     "build": "agent",
     "lint": "agent",
+    "no-clear-interval": "agent",
+    "no-discarded-router-navigation": "agent",
     "test": "agent",
-    "typescript-empty-lines": "user"
+    "typescript-empty-lines": "agent"
   },
   "removed": [],
   "useNix": true,

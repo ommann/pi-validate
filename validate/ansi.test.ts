@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { ansiParts, renderAnsi } from "./ui/ansi.js";
+import { ansiParts, renderAnsi } from "./shared/ansi.js";
 
 test("ANSI colors and styles reset correctly", () => {
   const parts = ansiParts("plain \x1b[1;31mred bold\x1b[22;39m normal");

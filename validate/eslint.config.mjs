@@ -11,9 +11,9 @@ export default tseslint.config(
     ignores: [
       '.git/**',
       '.state/**',
-      'node_modules/**',
-      'ui/**/*.css',
-      'ui/**/*.html',
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/.angular/**',
     ],
   },
   js.configs.recommended,
@@ -44,7 +44,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['ui/**/*.js'],
+    files: ['shared/**/*.js'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',

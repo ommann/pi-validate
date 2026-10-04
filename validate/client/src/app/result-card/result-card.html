@@ -1,0 +1,7 @@
+<details #card class="result" [attr.data-status]="result().status">
+  <summary [attr.aria-label]="result().name + ': ' + result().status" [attr.aria-description]="description()">
+    <span class="result-name">{{ result().name }}</span>
+    <span class="policy-pill" [attr.data-policy]="visibility()">{{ visibility() === 'agent' ? 'Agent' : visibility() === 'user' ? 'User' : 'Off' }}</span>
+  </summary>
+  <pre [ansiOutput]="result().output || (result().status === 'running' ? 'Waiting for output…' : 'No output.')"></pre>
+</details>

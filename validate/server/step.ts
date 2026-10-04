@@ -6,14 +6,9 @@ export type Context = {
   output?: (stream: "stdout" | "stderr", text: string) => void;
 };
 
-export type NumberParameter = {
-  type: "number";
-  label: string;
-  default: number;
-  min?: number;
-  max?: number;
-  step?: number;
-};
+import type { NumberParameter } from "../shared/contracts.ts";
+
+export type { NumberParameter } from "../shared/contracts.ts";
 
 export type Step = {
   name: string;
