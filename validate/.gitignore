@@ -1,6 +1,7 @@
 .state/
 node_modules/
 coverage/
+reports/
 *.log
 .validate.json.tmp
 .direnv/

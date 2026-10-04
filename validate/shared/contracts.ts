@@ -29,7 +29,7 @@ export type Detection = {
 export type Result = {
   name: string;
   policy: Policy;
-  status: 'pending' | 'running' | 'passed' | 'failed' | 'skipped';
+  status: 'pending' | 'running' | 'passed' | 'failed' | 'skipped' | 'cancelled';
   output: string;
   reason?: string;
   exitCode?: number;
@@ -40,6 +40,7 @@ export type Result = {
 export type Run = {
   id: string;
   caller: 'agent' | 'user';
+  cancelled?: boolean;
   startedAt: string;
   finishedAt?: string;
   plan: Plan;
@@ -64,6 +65,8 @@ export type StepSummary = {
 export type Snapshot = {
   cwd: string;
   busy: boolean;
+  running?: boolean;
+  stopping?: boolean;
   plan: Plan;
   steps: StepSummary[];
   runs: Run[];

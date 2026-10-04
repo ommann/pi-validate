@@ -3,10 +3,13 @@
   "scripts": {
     "build": "bun run --cwd client build",
     "lint": "eslint .",
-    "test": "bun test ./*.test.ts ../pi-validate && bun run --cwd client test --watch=false"
+    "test": "bun test ./*.test.ts ../pi-validate && bun run --cwd client test --watch=false",
+    "mutation": "stryker run",
+    "mutation:dry": "stryker run --dryRunOnly"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@stryker-mutator/core": "^10.0.0",
     "eslint": "^10.12.0",
     "globals": "^17.13.0",
     "typescript-eslint": "^8.71.0"

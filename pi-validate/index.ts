@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import { truncateTail, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { runValidation } from "./client.ts";
+import { reportText, runValidation } from "./client.ts";
 
 export default function (pi: ExtensionAPI) {
   pi.registerTool({
@@ -11,9 +11,7 @@ export default function (pi: ExtensionAPI) {
     parameters: Type.Object({}),
     async execute(_id, _params, signal, _onUpdate, ctx) {
       const { report, url } = await runValidation(ctx.cwd, signal);
-      const text = report.failures.length
-        ? report.failures.map(failure => `Failed: ${failure.name} (exit ${failure.exitCode})\n${failure.output}`).join("\n")
-        : "Validation passed";
+      const text = reportText(report);
       const output = truncateTail(text);
       return {
         content: [{ type: "text", text: `${output.content}${output.truncated ? "\n[Output truncated; full logs in web UI.]" : ""}` }],

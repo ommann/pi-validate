@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ValidationClient } from '@app/validation';
 import type { Snapshot } from '@app/models';
 
@@ -15,6 +15,7 @@ describe('ValidationClient optimistic saves', () => {
   let http: HttpTestingController;
 
   beforeEach(() => {
+    vi.useFakeTimers();
     TestBed.configureTestingModule({
       providers: [ValidationClient, provideHttpClient(), provideHttpClientTesting()],
     });
@@ -23,7 +24,133 @@ describe('ValidationClient optimistic saves', () => {
     client.state.set(structuredClone(snapshot));
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => {
+    http.verify({ ignoreCancelled: true });
+    vi.useRealTimers();
+  });
+
+  it('opens a project, detects applicability, and polls for updated runs', async () => {
+    client.openProject('/tmp/project');
+    expect(client.state()).toBeNull();
+
+    http.expectOne('/tmp/project/api/state').flush(snapshot);
+    await vi.advanceTimersByTimeAsync(0);
+    http.expectOne('/tmp/project/api/detect').flush(snapshot);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.state()).toEqual(snapshot);
+
+    await vi.advanceTimersByTimeAsync(500);
+    http.expectOne('/tmp/project/api/state').flush({ ...snapshot, busy: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.state()?.busy).toBe(true);
+    http.expectNone('/tmp/project/api/detect');
+  });
+
+  it('cancels old project requests and rejects stale updates after navigation', async () => {
+    client.openProject('/tmp/old');
+    const old = http.expectOne('/tmp/old/api/state');
+
+    client.openProject('/tmp/new');
+    expect(old.cancelled).toBe(true);
+    const next = { ...snapshot, cwd: '/tmp/new' };
+    http.expectOne('/tmp/new/api/state').flush(next);
+    await vi.advanceTimersByTimeAsync(0);
+    http.expectOne('/tmp/new/api/detect').flush(next);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(client.state()?.cwd).toBe('/tmp/new');
+    expect(client.error()).toBe('');
+  });
+
+  it('reports polling connection errors and recovers on the next poll', async () => {
+    client.openProject('/tmp/project');
+    http.expectOne('/tmp/project/api/state').error(new ProgressEvent('error'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.error()).toContain('Cannot connect');
+
+    await vi.advanceTimersByTimeAsync(500);
+    http.expectOne('/tmp/project/api/state').flush(snapshot);
+    await vi.advanceTimersByTimeAsync(0);
+    http.expectOne('/tmp/project/api/detect').flush(snapshot);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(client.state()).toEqual(snapshot);
+  });
+
+  it('runs as a user and stays pending until authoritative state is refreshed', async () => {
+    const running = client.run();
+    expect(client.pending()).toBe(true);
+    const request = http.expectOne('api/run');
+    expect(request.request.body).toEqual({ caller: 'user' });
+    request.flush({ id: 'run' });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(client.pending()).toBe(true);
+    http.expectOne('api/state').flush({ ...snapshot, busy: false });
+    await running;
+    expect(client.pending()).toBe(false);
+    expect(client.error()).toBe('');
+  });
+
+  it('reports run and refresh failures without leaving controls locked', async () => {
+    const running = client.run();
+    http.expectOne('api/run').flush({ error: 'Busy' }, { status: 409, statusText: 'Conflict' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.error()).toContain('Busy');
+
+    http.expectOne('api/state').flush({}, { status: 500, statusText: 'Server error' });
+    await running;
+    expect(client.error()).toContain('HTTP 500');
+    expect(client.pending()).toBe(false);
+  });
+
+  it('stops an active run and waits for the server cleanup response', async () => {
+    client.state.set({ ...snapshot, busy: true, running: true });
+    const stopped = client.stop();
+    expect(client.stopping()).toBe(true);
+    expect(client.running()).toBe(true);
+
+    const request = http.expectOne('api/stop');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.headers.get('X-Validate')).toBe('1');
+    await client.stop();
+    http.expectNone('api/stop');
+
+    request.flush({ ...snapshot, running: false, stopping: false });
+    await stopped;
+    expect(client.stopping()).toBe(false);
+    expect(client.running()).toBe(false);
+    expect(client.error()).toBe('');
+  });
+
+  it('reports stop failures without pretending the run ended', async () => {
+    client.state.set({ ...snapshot, busy: true, running: true });
+    const stopped = client.stop();
+    http.expectOne('api/stop').flush({ error: 'Cannot stop' }, { status: 500, statusText: 'Server error' });
+    await stopped;
+
+    expect(client.error()).toContain('Cannot stop');
+    expect(client.running()).toBe(true);
+    expect(client.stopping()).toBe(false);
+  });
+
+  it('does not request cancellation when idle', async () => {
+    await client.stop();
+    http.expectNone('api/stop');
+  });
+
+  it('reports restart failures and restores the controls', async () => {
+    const restarted = client.restart();
+    expect(client.restarting()).toBe(true);
+    expect(client.pending()).toBe(true);
+
+    http.expectOne('/api/restart').flush({ error: 'A project is busy' }, { status: 409, statusText: 'Conflict' });
+    await restarted;
+
+    expect(client.error()).toContain('A project is busy');
+    expect(client.restarting()).toBe(false);
+    expect(client.pending()).toBe(false);
+  });
 
   it('updates the plan immediately and accepts the confirmed state', async () => {
     const plan = { ...snapshot.plan, policies: { build: 'user' as const } };
@@ -78,9 +205,7 @@ describe('ValidationClient optimistic saves', () => {
     http.expectNone('api/plan');
 
     detection.flush(snapshot);
-    await new Promise(resolve => {
-      setTimeout(resolve, 0);
-    });
+    await vi.advanceTimersByTimeAsync(0);
     expect(client.plan()).toEqual(plan);
     expect(client.editingDisabled()).toBe(false);
     http.expectOne('api/plan').flush({ ...snapshot, plan });

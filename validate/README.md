@@ -54,6 +54,57 @@ No ast-grep executable or target-project Nix dependency is required.
 Matching is syntactic: qualified calls such as `window.clearTimeout(...)` and
 aliases are not detected, and locally defined `clearTimeout` functions also match.
 
+## TypeScript test coverage
+
+The `vitest-coverage` step discovers Angular workspaces (including nested `client/`
+folders) with an `@angular/build:unit-test` Vitest target and an installed
+`@vitest/coverage-v8` or `@vitest/coverage-istanbul` provider. It does not require a
+particular package script name. Other test runners are not supported by this step.
+
+`minLineCoverage` sets the minimum aggregate TypeScript line coverage percentage
+(default 80, range 0–100), checked separately for each Angular project. The step
+runs the project's Angular CLI with coverage, preserves existing runner setup and
+exclusions, and includes TypeScript source files, including untested files.
+Vitest natively enforces `minLineCoverage` as its line threshold; other project
+coverage thresholds still apply. The step forwards native output and exit codes,
+without parsing reports or adding its own coverage summary.
+
+Coverage uses a temporary runner config and report directory, removed after execution;
+project settings are not rewritten. The project's own provider performs all
+instrumentation. This project's frontend includes `@vitest/coverage-v8`; its Bun
+backend tests are not included in this step.
+
+## Mutation testing (Stryker)
+
+StrykerJS is installed in `validate/`. Its project-owned `stryker.config.json`
+mutates frontend TypeScript only, excluding specs and declarations, and invokes
+Angular's existing Vitest test target through the command runner. Bun backend
+mutation testing is not configured.
+
+From `validate/` (Node.js 22+ is required):
+
+```sh
+bun run mutation:dry                         # verify the instrumented baseline
+bun run mutation --mutate client/src/app/server-control.ts  # smaller trial
+bun run mutation                            # all configured frontend source
+```
+
+The native mutation-score failure threshold is `thresholds.break` (80%); `high`
+and `low` control report colors. Results are native Stryker output plus an HTML
+report at `reports/mutation/mutation.html`. Sandboxes live in `.state/stryker`,
+which the validation source scanners already exclude.
+
+The mutation command sets `NG_BUILD_TYPE_CHECK=0` for Angular 22: Stryker's
+instrumentation changes inferred types and otherwise breaks Angular template
+checking even before mutants are activated. This affects mutation runs only;
+normal tests/builds retain type checking. The built-in Angular ignorer also
+preserves compiler-required static metadata.
+
+`coverageAnalysis: "off"` is required for the command runner: it cannot select
+individual tests by mutant coverage. Each mutant reruns Angular build/tests, so
+full runs are substantially slower than ordinary coverage. A dry run validates
+the integration but does not measure mutation score.
+
 ## CLI
 
 ```sh

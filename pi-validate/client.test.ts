@@ -3,8 +3,18 @@ import { mkdtemp, chmod, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { ensureServer, runValidation } from "./client.ts";
+import { ensureServer, reportText, runValidation } from "./client.ts";
 import { startServer } from "../validate/server/server.ts";
+
+test("report text never calls cancelled or nonzero runs passed", () => {
+  expect(reportText({ exitCode: 0, failures: [] })).toBe("Validation passed");
+  expect(reportText({ exitCode: 130, cancelled: true, failures: [] })).toBe("Validation cancelled");
+  expect(reportText({ exitCode: 130, failures: [] })).toBe("Validation cancelled");
+  expect(reportText({ exitCode: 1, failures: [] })).toBe("Validation did not complete (exit 1)");
+  const failures = [{ name: "lint", exitCode: 7, output: "bad" }];
+  expect(reportText({ exitCode: 7, failures })).toBe("Failed: lint (exit 7)\nbad");
+  expect(reportText({ exitCode: 130, cancelled: true, failures })).toBe("Validation cancelled\nFailed: lint (exit 7)\nbad");
+});
 
 test("client reconnects and returns only agent-visible failures", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "pi-validate-client-"));

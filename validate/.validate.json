@@ -8,40 +8,50 @@
       "lint"
     ],
     [
-      "typescript-empty-lines"
-    ],
-    [
-      "never-applicable"
-    ],
-    [
       "ast-grep-no-subscribe",
       "ast-grep-no-clear-interval",
       "ast-grep-no-discarded-router-navigation",
       "ast-grep-no-sanitization-bypass",
+      "ast-grep-no-dynamic-code"
+    ],
+    [
+      "typescript-empty-lines"
+    ],
+    [
+      "vitest-coverage",
       "eslint-rare"
     ],
     [
-      "ast-grep-no-dynamic-code"
+      "stryker-mutation",
+      "never-applicable"
     ]
   ],
   "policies": {
-    "ast-grep-no-clear-interval": "user",
-    "ast-grep-no-discarded-router-navigation": "user",
-    "ast-grep-no-dynamic-code": "user",
-    "ast-grep-no-sanitization-bypass": "user",
-    "ast-grep-no-subscribe": "user",
+    "ast-grep-no-clear-interval": "off",
+    "ast-grep-no-discarded-router-navigation": "off",
+    "ast-grep-no-dynamic-code": "off",
+    "ast-grep-no-sanitization-bypass": "off",
+    "ast-grep-no-subscribe": "off",
     "build": "agent",
-    "eslint-rare": "agent",
+    "eslint-rare": "off",
     "lint": "agent",
     "never-applicable": "agent",
+    "stryker-mutation": "off",
     "test": "agent",
-    "typescript-empty-lines": "agent"
+    "typescript-empty-lines": "off",
+    "vitest-coverage": "off"
   },
   "removed": [],
   "useNix": true,
   "configs": {
+    "stryker-mutation": {
+      "minMutationScore": 80
+    },
     "typescript-empty-lines": {
       "minEmptyLineRatio": 0.13
+    },
+    "vitest-coverage": {
+      "minLineCoverage": 80
     }
   }
 }

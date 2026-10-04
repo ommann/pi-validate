@@ -46,6 +46,45 @@ test("project URLs isolate tabs, settings, and concurrent runs without implicit 
   }
 });
 
+test("stop is a trusted project-scoped POST available while a run is busy", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "validate-stop-http-"));
+  await Bun.write(join(cwd, "package.json"), JSON.stringify({ scripts: { lint: "echo started; sleep 30" } }));
+  const server = await startServer(cwd, 0, { persist: false });
+  const base = new URL(projectPath(cwd), server.url);
+  const post = (action: string, body = {}) => fetch(new URL(`api/${action}`, base), {
+    method: "POST", headers: { "Content-Type": "application/json", "X-Validate": "1" }, body: JSON.stringify(body),
+  });
+  let running: Promise<Response> | undefined;
+
+  try {
+    expect((await fetch(new URL("api/stop", base))).status).toBe(404);
+    expect((await fetch(new URL("api/stop", base), { method: "POST" })).status).toBe(403);
+    running = post("run", { caller: "agent" });
+    let started = false;
+    for (let i = 0; i < 200 && !started; i++) {
+      const state = await (await fetch(new URL("api/state", base))).json();
+      started = state.runs.at(-1)?.results.some((result: any) => result.output.includes("started"));
+      if (!started) await Bun.sleep(5);
+    }
+    expect(started).toBe(true);
+
+    const stopped = await post("stop");
+    expect(stopped.status).toBe(200);
+    const state = await stopped.json();
+    expect(state.busy).toBe(false);
+    expect(state.running).toBe(false);
+    expect(state.runs.at(-1).cancelled).toBe(true);
+    expect(state.runs.at(-1).results.find((result: any) => result.name === "lint").status).toBe("cancelled");
+    expect(await (await running).json()).toEqual({ exitCode: 130, cancelled: true, failures: [] });
+    expect((await post("stop")).status).toBe(200);
+  } finally {
+    await post("stop");
+    await running;
+    server.stop(true);
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
 test("shutdown requires trusted POST and closes the server", async () => {
   const server = await startServer(process.cwd(), 0, { persist: false });
   const url = new URL('/api/shutdown', server.url);

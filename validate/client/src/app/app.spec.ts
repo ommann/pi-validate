@@ -44,6 +44,37 @@ describe('App', () => {
     expect(compiled.querySelector<HTMLButtonElement>('#run')?.disabled).toBe(false);
   });
 
+  it('uses only Run and Stop labels and disables Stop during cleanup', async () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await TestBed.inject(Router).navigateByUrl(projectPath('/tmp/project'));
+    await fixture.whenStable();
+
+    const page = fixture.debugElement.query(By.directive(ProjectPage)).componentInstance as ProjectPage;
+    const button = fixture.nativeElement.querySelector('#run') as HTMLButtonElement;
+    expect(button.textContent).toBe('Run');
+
+    page.client.state.update(state => state ? { ...state, busy: true, running: true } : state);
+    await fixture.whenStable();
+    expect(button.textContent).toBe('Stop');
+    expect(button.disabled).toBe(false);
+
+    const stop = vi.spyOn(page.client, 'stop').mockResolvedValue();
+    button.click();
+    expect(stop).toHaveBeenCalledOnce();
+
+    page.client.stopping.set(true);
+    await fixture.whenStable();
+    expect(button.textContent).toBe('Stop');
+    expect(button.disabled).toBe(true);
+
+    page.client.stopping.set(false);
+    page.client.state.update(state => state ? { ...state, busy: false, running: false } : state);
+    await fixture.whenStable();
+    expect(button.textContent).toBe('Run');
+    expect(button.disabled).toBe(false);
+  });
+
   it('filters disabled steps in rows matching the enabled steps', async () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
@@ -364,6 +395,69 @@ describe('App', () => {
     expect(fixture.nativeElement.querySelector('.run-duration > span')?.textContent).toBe('2000ms');
   });
 
+  it('moves whole sections independently of their nested step lists', async () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await TestBed.inject(Router).navigateByUrl(projectPath('/tmp/project'));
+    await fixture.whenStable();
+
+    const page = fixture.debugElement.query(By.directive(ProjectPage)).componentInstance as ProjectPage;
+    const plan = {
+      groups: [['build', 'lint'], ['test'], ['new-rule']],
+      policies: { build: 'agent', lint: 'agent', test: 'agent', 'new-rule': 'user' },
+      configs: { 'new-rule': { threshold: 80 } }, useNix: true,
+    } as const;
+    page.client.state.set({
+      cwd: '/tmp/project', busy: false, steps: [], runs: [],
+      plan: { ...plan, groups: [['build', 'lint'], ['test'], ['new-rule']] },
+    });
+    await fixture.whenStable();
+
+    const outer = fixture.debugElement.query(By.css('#steps')).injector.get(CdkDropList<string[][]>);
+    const sections = fixture.debugElement.queryAll(By.css('.step-group'))
+      .map(element => element.injector.get(CdkDrag<string[]>));
+    const inner = fixture.debugElement.queryAll(By.css('.step-list'))
+      .map(element => element.injector.get(CdkDropList<string[]>));
+    const save = vi.spyOn(page.client, 'save').mockImplementation(async next => {
+      page.client.state.update(state => state ? { ...state, plan: next } : state);
+    });
+
+    expect(outer.getSortedItems()).toEqual(sections);
+    expect(inner[0].getSortedItems().map(drag => drag.data)).toEqual(['build', 'lint']);
+    expect(sections.at(-1)?.disabled).toBe(true);
+    expect(page.sectionSort(2)).toBe(true);
+    expect(page.sectionSort(3)).toBe(false);
+
+    const dropped = {
+      item: sections[2], previousContainer: outer, container: outer,
+      previousIndex: 2, currentIndex: 1, isPointerOverContainer: true,
+      distance: { x: 0, y: -30 }, dropPoint: { x: 0, y: 30 }, event: new MouseEvent('mouseup'),
+    };
+
+    outer.dropped.emit({ ...dropped, isPointerOverContainer: false });
+    expect(save).not.toHaveBeenCalled();
+    page.client.pending.set(true);
+    outer.dropped.emit(dropped);
+    expect(save).not.toHaveBeenCalled();
+    page.client.pending.set(false);
+
+    outer.dropped.emit(dropped);
+    await fixture.whenStable();
+    expect(save).toHaveBeenCalledWith({ ...plan, groups: [['build', 'lint'], ['new-rule'], ['test']] });
+    expect(page.groups()).toEqual([['build', 'lint'], ['new-rule'], ['test'], []]);
+
+    const handle = fixture.nativeElement.querySelectorAll('.section-handle')[1] as HTMLButtonElement;
+    handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+    await fixture.whenStable();
+    expect(page.groups()).toEqual([['new-rule'], ['build', 'lint'], ['test'], []]);
+
+    save.mockClear();
+    page.sectionKey(new KeyboardEvent('keydown', { key: 'ArrowUp' }), 0);
+    page.sectionKey(new KeyboardEvent('keydown', { key: 'ArrowDown' }), 2);
+    await fixture.whenStable();
+    expect(save).not.toHaveBeenCalled();
+  });
+
   it.each([
     { source: 0, target: 1, groups: [['lint', 'build']] },
     { source: 0, target: 2, groups: [['lint'], ['build']] },
@@ -384,9 +478,9 @@ describe('App', () => {
 
     const compiled = fixture.nativeElement as HTMLElement;
 
-    const lists = fixture.debugElement.queryAll(By.directive(CdkDropList))
+    const lists = fixture.debugElement.queryAll(By.css('.step-list'))
       .map(element => element.injector.get(CdkDropList<string[]>));
-    const drags = fixture.debugElement.queryAll(By.directive(CdkDrag))
+    const drags = fixture.debugElement.queryAll(By.css('.step-details'))
       .map(element => element.injector.get(CdkDrag<string>));
     const save = vi.spyOn(page.client, 'save').mockImplementation(async next => {
       page.client.state.update(state => state ? { ...state, plan: next } : state);
@@ -399,7 +493,7 @@ describe('App', () => {
     expect(compiled.querySelector('.phantom-section')?.childElementCount).toBe(0);
     expect(compiled.querySelector('[title]')).toBeNull();
     expect(drags.map(drag => drag.data)).toEqual(['build', 'lint']);
-    expect(fixture.debugElement.queryAll(By.directive(CdkDragHandle))).toHaveLength(2);
+    expect(fixture.debugElement.queryAll(By.directive(CdkDragHandle))).toHaveLength(4);
     expect(lists[0].getSortedItems()).toContain(drags[0]);
     expect(lists.every(list => !list.sortingDisabled)).toBe(true);
 
@@ -432,7 +526,7 @@ describe('App', () => {
 
     expect(save).toHaveBeenCalledWith({ ...plan, groups });
     expect(page.client.state()?.plan.groups).toEqual(groups);
-    const updatedLists = fixture.debugElement.queryAll(By.directive(CdkDropList))
+    const updatedLists = fixture.debugElement.queryAll(By.css('.step-list'))
       .map(element => element.injector.get(CdkDropList<string[]>));
 
     expect(updatedLists.map(list => list.data)).toEqual([...groups, []]);

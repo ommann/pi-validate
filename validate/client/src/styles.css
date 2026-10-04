@@ -27,6 +27,11 @@ header {
   justify-content: space-between;
 }
 
+#run {
+  box-sizing: border-box;
+  width: 64px;
+}
+
 h1 {
   margin: 0;
   font-size: 28px;
@@ -106,7 +111,25 @@ label {
 }
 
 .step-group {
-  padding: 6px 0;
+  position: relative;
+  padding: 6px 0 6px 22px;
+}
+
+.section-handle {
+  position: absolute;
+  left: 0;
+  top: 6px;
+  width: 18px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: #909090;
+  cursor: grab;
+}
+
+.section-handle:hover,
+.section-handle:focus-visible {
+  color: #99bfff;
 }
 
 .step-group h3 {

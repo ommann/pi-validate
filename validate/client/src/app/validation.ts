@@ -18,6 +18,11 @@ export class ValidationClient {
     equal: (previous, next) => JSON.stringify(previous) === JSON.stringify(next),
   });
 
+  private readonly starting = signal(false);
+  readonly stopping = signal(false);
+  readonly running = computed(() => this.starting() || !!this.state()?.running
+    || !!this.state()?.runs.some(run => !run.finishedAt));
+
   readonly pending = signal(false);
   readonly saving = signal(false);
   private readonly detecting = signal(false);
@@ -68,6 +73,8 @@ export class ValidationClient {
     this.base = projectPath(cwd);
     this.state.set(null);
     this.pending.set(false);
+    this.starting.set(false);
+    this.stopping.set(false);
     this.restarting.set(false);
     this.error.set('');
     this.polling = false;
@@ -181,8 +188,30 @@ export class ValidationClient {
     });
   }
 
-  run(): Promise<void> {
-    return this.action(() => this.api('/api/run', { caller: 'user' }));
+  async run(): Promise<void> {
+    if (this.disabled()) return;
+
+    const generation = this.generation;
+    this.starting.set(true);
+    try {
+      await this.action(() => this.api('/api/run', { caller: 'user' }));
+    } finally {
+      if (generation === this.generation) this.starting.set(false);
+    }
+  }
+
+  async stop(): Promise<void> {
+    if (!this.running() || this.stopping() || this.state()?.stopping) return;
+
+    const generation = this.generation;
+    this.stopping.set(true);
+    try {
+      this.accept(await this.api<Snapshot>('/api/stop', {}), generation);
+    } catch (error) {
+      if (generation === this.generation) this.error.set(String(error));
+    } finally {
+      if (generation === this.generation) this.stopping.set(false);
+    }
   }
 
   requestDetection(): void {

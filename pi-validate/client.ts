@@ -7,6 +7,16 @@ import { setTimeout as delay } from "node:timers/promises";
 import { projectPath } from "../validate/server/routes.ts";
 import type { AgentReport } from "../validate/server/core.ts";
 
+export function reportText(report: AgentReport): string {
+  const failures = report.failures.map(failure => `Failed: ${failure.name} (exit ${failure.exitCode})\n${failure.output}`).join("\n");
+
+  if (report.cancelled) return `Validation cancelled${failures ? `\n${failures}` : ""}`;
+  if (failures) return failures;
+  if (report.exitCode === 0) return "Validation passed";
+
+  return report.exitCode === 130 ? "Validation cancelled" : `Validation did not complete (exit ${report.exitCode})`;
+}
+
 export const serverUrl = "http://127.0.0.1:3210";
 export const logFile = join(tmpdir(), `pi-validate-${process.getuid?.() ?? "user"}.log`);
 

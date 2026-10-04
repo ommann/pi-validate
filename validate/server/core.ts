@@ -6,7 +6,7 @@ import type { Context, Step } from "./step.ts";
 import type { Plan, Detection, Run, Snapshot } from "../shared/contracts.ts";
 
 export type { Policy, Plan, Detection, Result, Run } from "../shared/contracts.ts";
-export type AgentReport = { exitCode: number; failures: { name: string; output: string; exitCode: number }[] };
+export type AgentReport = { exitCode: number; cancelled?: boolean; failures: { name: string; output: string; exitCode: number }[] };
 
 const now = () => new Date().toISOString();
 
@@ -95,7 +95,7 @@ export function agentReport(run: Run): AgentReport {
   const failures = run.results.filter(result => result.policy === "agent" && result.status === "failed")
     .map(result => ({ name: result.name, output: result.output, exitCode: result.exitCode ?? 1 }));
 
-  return { exitCode: failures[0]?.exitCode ?? 0, failures };
+  return { exitCode: run.cancelled ? 130 : failures[0]?.exitCode ?? 0, failures, ...(run.cancelled ? { cancelled: true } : {}) };
 }
 
 export class Validation {
@@ -106,6 +106,8 @@ export class Validation {
   runs: Run[] = [];
   busy = false;
   private configFile?: string;
+  private controller?: AbortController;
+  private runDone?: Promise<void>;
 
   private constructor(cwd: string, steps: Step[], plan: Plan, configFile?: string) {
     this.cwd = cwd;
@@ -129,7 +131,7 @@ export class Validation {
   }
 
   snapshot(): Snapshot {
-    return { cwd: this.cwd, busy: this.busy, plan: this.plan, steps: this.steps.map(step => ({ name: step.name, parameters: step.parameters ?? {}, detection: this.detections[step.name] ?? null })), runs: this.runs };
+    return { cwd: this.cwd, busy: this.busy, running: !!this.controller, stopping: this.controller?.signal.aborted ?? false, plan: this.plan, steps: this.steps.map(step => ({ name: step.name, parameters: step.parameters ?? {}, detection: this.detections[step.name] ?? null })), runs: this.runs };
   }
 
   async configure(value: unknown) {
@@ -156,6 +158,8 @@ export class Validation {
 
   private async detectWith(context: Context) {
     for (const step of this.steps) {
+      context.signal?.throwIfAborted();
+
       try {
         this.detections[step.name] = { applicable: await step.detect({ ...context, config: this.plan.configs?.[step.name] ?? {} }), checkedAt: now() };
       } catch (error) {
@@ -173,9 +177,20 @@ export class Validation {
     return this.detections;
   }
 
+  async stop(): Promise<void> {
+    this.controller?.abort();
+    await this.runDone;
+  }
+
   async run(caller: "agent" | "user" = "agent"): Promise<Run> {
     if (this.busy) throw new Error("Validation is busy");
     this.busy = true;
+    const controller = new AbortController();
+    const { signal } = controller;
+    const done = Promise.withResolvers<void>();
+    this.controller = controller;
+    this.runDone = done.promise;
+
     const plan = structuredClone(this.plan);
     const run: Run = {
       id: crypto.randomUUID(), caller, startedAt: now(), plan,
@@ -183,8 +198,10 @@ export class Validation {
     };
 
     try {
-      const context = await this.context();
+      const context = { ...await this.context(), signal };
+      signal.throwIfAborted();
       await this.detectWith(context);
+      signal.throwIfAborted();
 
       for (const result of run.results) {
         const detection = this.detections[result.name]!;
@@ -205,6 +222,11 @@ export class Validation {
 
           if (result.status === "skipped") return;
 
+          if (signal.aborted) {
+            result.status = "cancelled";
+            return;
+          }
+
           if (blocked) {
             result.status = "skipped";
             result.reason = "Earlier agent-visible failure";
@@ -218,11 +240,12 @@ export class Validation {
             if (detection.error) throw new Error(detection.error);
             const step = this.steps.find(step => step.name === name)!;
             result.exitCode = await step.run({ ...context, useNix: plan.useNix, config: plan.configs?.[name] ?? {}, output: (_stream, text) => { result.output += text; } });
-            result.status = result.exitCode === 0 ? "passed" : "failed";
+            result.status = signal.aborted ? "cancelled" : result.exitCode === 0 ? "passed" : "failed";
+            if (signal.aborted) result.exitCode = undefined;
           } catch (error) {
-            result.output += `${String(error)}\n`;
-            result.status = "failed";
-            result.exitCode = 1;
+            if (!signal.aborted) result.output += `${String(error)}\n`;
+            result.status = signal.aborted ? "cancelled" : "failed";
+            result.exitCode = signal.aborted ? undefined : 1;
           } finally { result.finishedAt = now(); }
         }));
 
@@ -232,15 +255,19 @@ export class Validation {
     } catch (error) {
       for (const result of run.results) {
         if (result.status !== "pending") continue;
-        result.status = result.policy === "off" ? "skipped" : "failed";
+        result.status = result.policy === "off" ? "skipped" : signal.aborted ? "cancelled" : "failed";
         result.reason = result.policy === "off" ? "Disabled" : undefined;
-        result.exitCode = result.policy === "off" ? undefined : 1;
-        if (result.policy !== "off") result.output = `${String(error)}\n`;
+        result.exitCode = result.policy === "off" || signal.aborted ? undefined : 1;
+        if (result.policy !== "off" && !signal.aborted) result.output = `${String(error)}\n`;
       }
     } finally {
       if (!this.runs.includes(run)) this.runs.push(run);
+      if (signal.aborted) run.cancelled = true;
       run.finishedAt = now();
       this.busy = false;
+      this.controller = undefined;
+      this.runDone = undefined;
+      done.resolve();
     }
 
     return run;

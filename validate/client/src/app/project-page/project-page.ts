@@ -45,7 +45,8 @@ export class ProjectPage {
 
   readonly selectedRun = computed(() => this.client.state()?.runs.find(run => run.id === this.selectedId()));
   readonly runResults = computed(() => this.selectedRun()?.results.filter(result =>
-    result.status === 'running' || result.status === 'passed' || result.status === 'failed',
+    result.status === 'running' || result.status === 'passed' || result.status === 'failed'
+    || (result.status === 'cancelled' && !!result.startedAt),
   ) ?? []);
 
   readonly visibleRuns = computed(() => {
@@ -196,6 +197,39 @@ export class ProjectPage {
 
     event.preventDefault();
     this.client.changePlan(name, event.ctrlKey ? (event.key === 'ArrowUp' ? 'join' : 'separate') : (event.key === 'ArrowUp' ? 'up' : 'down'));
+  }
+
+  readonly sectionSort = (index: number): boolean => index < this.groups().length - 1;
+
+  sectionKey(event: KeyboardEvent, index: number): void {
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+
+    event.preventDefault();
+    void this.moveSection(index, index + (event.key === 'ArrowUp' ? -1 : 1));
+  }
+
+  async dropSection(event: CdkDragDrop<string[][], string[][], string[]>): Promise<void> {
+    if (!event.isPointerOverContainer || event.previousContainer !== event.container) return;
+
+    await this.moveSection(event.previousIndex, event.currentIndex);
+  }
+
+  private async moveSection(from: number, to: number): Promise<void> {
+    const plan = this.client.plan();
+    if (!plan || this.client.editingDisabled()) return;
+
+    const groups = this.groups().filter(group => group.length).map(group => [...group]);
+    if (from === to || from < 0 || to < 0 || from >= groups.length || to >= groups.length) return;
+
+    const cwd = this.cwd();
+    moveItemInArray(groups, from, to);
+    await this.client.save({ ...plan, groups });
+
+    if (cwd === this.cwd()) {
+      const saved = this.client.plan();
+
+      this.groups.set([...(saved ? activeGroups(saved) : []), []]);
+    }
   }
 
   async drop(event: CdkDragDrop<string[], string[], string>): Promise<void> {

@@ -2,7 +2,7 @@
   <header>
     <h1>Validate</h1>
     <div class="row">
-      <button id="run" [disabled]="client.disabled()" [attr.aria-busy]="client.state()?.busy || client.pending()" (click)="run()">Run</button>
+      <button id="run" [disabled]="client.running() ? client.stopping() || client.state()?.stopping : client.disabled()" [attr.aria-busy]="client.state()?.busy || client.pending()" (click)="client.running() ? client.stop() : run()">{{ client.running() ? 'Stop' : 'Run' }}</button>
       <button id="restart-server" [disabled]="client.disabled()" [attr.aria-busy]="client.restarting()" (click)="client.restart()">Restart</button>
     </div>
   </header>
@@ -16,9 +16,13 @@
       Use project’s Nix shell
     </label>
 
-    <div id="steps" class="step-groups" cdkDropListGroup>
+    <div id="steps" class="step-groups" cdkDropList [cdkDropListData]="groups()" [cdkDropListDisabled]="client.editingDisabled()" [cdkDropListSortPredicate]="sectionSort" (cdkDropListDropped)="dropSection($event)">
+      <div cdkDropListGroup>
       @for (group of groups(); track $index; let index = $index) {
-        <div class="step-group">
+        <div class="step-group" cdkDrag [cdkDragData]="group" [cdkDragDisabled]="$last || client.editingDisabled()">
+          @if (!$last) {
+            <button class="section-handle" type="button" cdkDragHandle [disabled]="client.editingDisabled()" [attr.aria-label]="'Move section ' + (index + 1)" (keydown)="sectionKey($event, index)">⠿</button>
+          }
           <div
             class="run-list step-list" [class.phantom-section]="$last"
             [attr.aria-label]="$last ? 'New section drop area' : 'Section ' + (index + 1) + ' steps'"
@@ -54,6 +58,7 @@
           </div>
         </div>
       }
+      </div>
     </div>
 
     <details #catalog id="catalog" (toggle)="catalog.open && client.requestDetection()">

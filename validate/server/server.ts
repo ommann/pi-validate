@@ -96,7 +96,7 @@ export async function startServer(cwd = process.cwd(), port = 3210, options: Ser
       const pathname = legacy ? url.pathname.slice("/projects".length) : url.pathname;
 
       try {
-        const match = pathname.match(/^(\/.*\/|\/)(api\/(?:state|plan|detect|run))$/);
+        const match = pathname.match(/^(\/.*\/|\/)(api\/(?:state|plan|detect|run|stop))$/);
         if (!match) {
           if (request.method !== "GET") return json({ error: "Not found" }, 404);
           if (legacy) return Response.redirect(new URL(pathname, url), 302);
@@ -120,12 +120,13 @@ export async function startServer(cwd = process.cwd(), port = 3210, options: Ser
         if (stopping) return json({ error: "Server is stopping" }, 503);
         const action = match[2];
         if (request.method === "GET") return action === "api/state" ? json(project.snapshot()) : json({ error: "Not found" }, 404);
-        if (project.busy) return json({ error: "Validation is busy" }, 409);
+        if (project.busy && action !== "api/stop") return json({ error: "Validation is busy" }, 409);
         const body = await request.json();
         if (stopping) return json({ error: "Server is stopping" }, 503);
 
         // The core acquires its per-project busy flag synchronously.
         switch (action) {
+          case "api/stop": await project.stop(); return json(project.snapshot());
           case "api/plan": await project.configure(body); return json(project.snapshot());
           case "api/detect": await project.detect(); return json(project.snapshot());
           case "api/run": {
