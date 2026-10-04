@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, linkedSignal, signal, untracked } from '@angular/core';
 import { DatePipe } from '@angular/common';
+import { format, formatDistanceStrict, isSameDay, isSameYear } from 'date-fns';
 import { CdkDrag, CdkDragHandle, CdkDropList, CdkDropListGroup, moveItemInArray, transferArrayItem } from '@angular/cdk/drag-drop';
 import type { CdkDragDrop } from '@angular/cdk/drag-drop';
 
@@ -21,6 +22,7 @@ export class ProjectPage {
   readonly search = signal('');
 
   readonly expandedHistory = signal(false);
+  readonly expandedDurations = signal<ReadonlySet<string>>(new Set());
   readonly selectedId = signal('');
   readonly followLatest = signal(true);
 
@@ -47,13 +49,10 @@ export class ProjectPage {
   ) ?? []);
 
   readonly visibleRuns = computed(() => {
-    const runs = [...(this.client.state()?.runs ?? [])].reverse();
-    const visible = this.expandedHistory() ? runs : runs.slice(0, 5);
-    const selected = runs.find(run => run.id === this.selectedId());
+    const runs = this.client.state()?.runs ?? [];
+    const recent = runs.slice(-5);
 
-    if (selected && !visible.includes(selected)) visible.push(selected);
-
-    return visible;
+    return this.expandedHistory() ? runs : runs.filter(run => recent.includes(run) || run.id === this.selectedId());
   });
 
   constructor() {
@@ -63,6 +62,7 @@ export class ProjectPage {
       this.search.set('');
 
       this.expandedHistory.set(false);
+      this.expandedDurations.set(new Set());
       this.selectedId.set('');
       this.followLatest.set(true);
 
@@ -121,6 +121,69 @@ export class ProjectPage {
 
   count(run: Run, status: string): number {
     return run.results.filter(result => result.status === status).length;
+  }
+
+  runTime(timestamp: string): string {
+    const date = new Date(timestamp);
+    const now = new Date(Date.now());
+    const age = Math.max(0, now.getTime() - date.getTime());
+
+    if (age < 1000) return 'just now';
+    if (age < 3_600_000) {
+      return formatDistanceStrict(date, now, {
+        addSuffix: true,
+        unit: age < 60_000 ? 'second' : 'minute',
+        roundingMethod: 'floor',
+      });
+    }
+
+    return format(date, isSameDay(date, now) ? 'HH:mm' : isSameYear(date, now) ? 'MMM d, HH:mm' : 'MMM d yyyy, HH:mm');
+  }
+
+  formatDuration(milliseconds: number): string {
+    return milliseconds < 100_000 ? `${milliseconds}ms` : `${Math.round(milliseconds / 1000)}s`;
+  }
+
+  duration(run: Run): number {
+    const end = run.finishedAt ? Date.parse(run.finishedAt) : Date.now();
+
+    return Math.max(0, end - Date.parse(run.startedAt));
+  }
+
+  toggleDuration(id: string): void {
+    this.expandedDurations.update(current => {
+      const next = new Set(current);
+
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+
+      return next;
+    });
+  }
+
+  durationDetails(run: Run) {
+    const now = Date.now();
+
+    return run.plan.groups.map((group, index) => {
+      const results = run.results.filter(result => group.includes(result.name));
+      const started = results.filter(result => result.startedAt);
+      const steps = group.map(name => {
+        const result = results.find(result => result.name === name);
+        const end = result?.finishedAt ? Date.parse(result.finishedAt) : now;
+        const duration = result?.startedAt ? Math.max(0, end - Date.parse(result.startedAt)) : 0;
+
+        return { name, duration, status: result?.status ?? 'pending' };
+      });
+      const start = started.length ? Math.min(...started.map(result => Date.parse(result.startedAt!))) : now;
+      const end = started.length ? Math.max(...started.map(result => result.finishedAt ? Date.parse(result.finishedAt) : now)) : now;
+
+      return {
+        label: `Steps ${index + 1}`,
+        duration: Math.max(0, end - start),
+        running: started.some(result => !result.finishedAt),
+        steps,
+      };
+    });
   }
 
   run(): void {

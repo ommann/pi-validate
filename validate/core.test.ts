@@ -94,6 +94,60 @@ test("disabled steps are detected independently but never run", () => fixture(as
   expect(executions).toBe(0);
 }));
 
+test("runs are not published with unresolved applicability totals", () => fixture(async cwd => {
+  const detecting = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const validation = await Validation.create(cwd, {
+    persist: false,
+    steps: [fake("build"), {
+      ...fake("absent"),
+      detect: async () => { detecting.resolve(); await release.promise; return false; },
+    }],
+  });
+
+  const running = validation.run();
+  await detecting.promise;
+
+  try {
+    expect(validation.busy).toBe(true);
+    expect(validation.runs).toHaveLength(0);
+  } finally {
+    release.resolve();
+  }
+
+  const run = await running;
+  expect(validation.runs).toEqual([run]);
+  expect(run.results.map(result => result.status)).toEqual(["passed", "skipped"]);
+}));
+
+test("known skips in later groups are excluded before execution starts", () => fixture(async cwd => {
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const wait: Step = {
+    name: "wait", detect: () => true,
+    run: async () => { started.resolve(); await release.promise; return 0; },
+  };
+  const validation = await Validation.create(cwd, {
+    steps: [wait, { ...fake("absent"), detect: () => false }, fake("disabled"), fake("later")],
+    persist: false,
+  });
+  await validation.configure({ groups: [["wait"], ["absent", "disabled", "later"]], policies: { disabled: "off" } });
+
+  const running = validation.run();
+  await started.promise;
+
+  try {
+    const results = validation.runs[0]!.results;
+    expect(results.map(result => result.status)).toEqual(["running", "skipped", "skipped", "pending"]);
+    expect(results.filter(result => result.status !== "skipped")).toHaveLength(2);
+  } finally {
+    release.resolve();
+  }
+
+  const run = await running;
+  expect(run.results.filter(result => result.status !== "skipped")).toHaveLength(2);
+}));
+
 test("parallel group waits for every member before stopping; busy operations rejected", () => fixture(async cwd => {
   const started = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();

@@ -1,7 +1,10 @@
 {
   "groups": [
     [
-      "build",
+      "build"
+    ],
+    [
+      "test",
       "lint"
     ],
     [
@@ -11,34 +14,34 @@
       "never-applicable"
     ],
     [
-      "test"
+      "ast-grep-no-subscribe",
+      "ast-grep-no-clear-interval",
+      "ast-grep-no-discarded-router-navigation",
+      "ast-grep-no-sanitization-bypass",
+      "eslint-rare"
+    ],
+    [
+      "ast-grep-no-dynamic-code"
     ]
   ],
   "policies": {
-    "ast-grep-no-clear-interval": "agent",
-    "ast-grep-no-discarded-router-navigation": "agent",
-    "ast-grep-no-dynamic-code": "off",
-    "ast-grep-no-sanitization-bypass": "off",
-    "ast-grep-no-subscribe": "off",
+    "ast-grep-no-clear-interval": "user",
+    "ast-grep-no-discarded-router-navigation": "user",
+    "ast-grep-no-dynamic-code": "user",
+    "ast-grep-no-sanitization-bypass": "user",
+    "ast-grep-no-subscribe": "user",
     "build": "agent",
     "eslint-rare": "agent",
     "lint": "agent",
     "never-applicable": "agent",
     "test": "agent",
-    "typescript-empty-lines": "user"
+    "typescript-empty-lines": "agent"
   },
-  "removed": [
-    "ast-grep-no-dynamic-code",
-    "ast-grep-no-subscribe",
-    "ast-grep-no-discarded-router-navigation",
-    "eslint-rare",
-    "ast-grep-no-sanitization-bypass",
-    "ast-grep-no-clear-interval"
-  ],
+  "removed": [],
   "useNix": true,
   "configs": {
     "typescript-empty-lines": {
-      "minEmptyLineRatio": 0.51
+      "minEmptyLineRatio": 0.13
     }
   }
 }

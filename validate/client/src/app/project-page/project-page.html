@@ -81,16 +81,31 @@
 
   <section>
     <h2>Runs</h2>
+    <button id="history-more" class="more" [hidden]="(client.state()?.runs?.length ?? 0) <= 5" (click)="expandedHistory.set(!expandedHistory())">{{ expandedHistory() ? 'Hide older' : 'Show older (' + ((client.state()?.runs?.length ?? 0) - 5) + ')' }}</button>
     <div id="history" class="run-list" aria-label="Run history">
       @for (run of visibleRuns(); track run.id) {
-        <button class="run-row" [attr.aria-pressed]="run.id === selectedId()" (click)="selectRun(run)">
-          <span>{{ run.startedAt | date:'medium' }}</span>
-          <span class="run-caller policy-pill" [attr.data-caller]="run.caller" [attr.data-policy]="run.caller">{{ run.caller === 'user' ? 'User' : 'Agent' }}</span>
-          <span [attr.aria-label]="count(run, 'passed') + ' passed, ' + count(run, 'failed') + ' failed, ' + count(run, 'skipped') + ' skipped'">{{ count(run, 'passed') }}/{{ run.results.length - count(run, 'skipped') }}{{ run.finishedAt ? '' : ' …' }}</span>
-        </button>
+        <div class="run-entry">
+          <button class="run-row" [attr.aria-pressed]="run.id === selectedId()" (click)="selectRun(run)">
+            <span [attr.title]="run.startedAt | date:'medium'">{{ runTime(run.startedAt) }}</span>
+            <span class="run-caller policy-pill" [attr.data-caller]="run.caller" [attr.data-policy]="run.caller">{{ run.caller === 'user' ? 'User' : 'Agent' }}</span>
+            <span [attr.aria-label]="count(run, 'passed') + ' passed, ' + count(run, 'failed') + ' failed, ' + count(run, 'skipped') + ' skipped'">{{ count(run, 'passed') }}/{{ run.results.length - count(run, 'skipped') }}{{ run.finishedAt ? '' : ' …' }}</span>
+          </button>
+          <button class="run-duration" [attr.aria-label]="'Elapsed time: ' + duration(run) + ' milliseconds'" [attr.aria-expanded]="expandedDurations().has(run.id)" [attr.aria-controls]="'duration-' + run.id" (click)="toggleDuration(run.id)"><span>{{ formatDuration(duration(run)) }}</span><span aria-hidden="true">{{ expandedDurations().has(run.id) ? '▾' : '▸' }}</span></button>
+          <div class="run-sections" [id]="'duration-' + run.id" [hidden]="!expandedDurations().has(run.id)">
+            @for (section of durationDetails(run); track $index) {
+              <details class="section-timing">
+                <summary class="timing-row"><span>{{ section.label }}</span><span class="timing-duration">{{ formatDuration(section.duration) }}</span><span class="timing-chevron" aria-hidden="true"></span></summary>
+                <div class="step-timings">
+                  @for (step of section.steps; track step.name) {
+                    <div class="step-timing timing-row"><span>{{ step.name }}</span><span class="timing-duration">{{ formatDuration(step.duration) }}</span><span aria-hidden="true"></span></div>
+                  }
+                </div>
+              </details>
+            }
+          </div>
+        </div>
       }
     </div>
-    <button id="history-more" class="more" [hidden]="(client.state()?.runs?.length ?? 0) <= 5" (click)="expandedHistory.set(!expandedHistory())">{{ expandedHistory() ? 'Less' : 'More (' + ((client.state()?.runs?.length ?? 0) - 5) + ')' }}</button>
     <p id="summary" [hidden]="selectedRun()">No runs yet.</p>
     <div id="results">
       @if (selectedRun(); as run) {

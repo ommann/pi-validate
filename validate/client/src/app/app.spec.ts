@@ -70,7 +70,9 @@ describe('App', () => {
     const catalog = compiled.querySelector<HTMLDetailsElement>('#catalog')!;
     for (const open of [true, false, true]) {
       catalog.open = open;
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise(resolve => {
+        setTimeout(resolve, 0);
+      });
       await fixture.whenStable();
       expect(page.client.pending()).toBe(false);
       expect(page.client.editingDisabled()).toBe(false);
@@ -171,6 +173,68 @@ describe('App', () => {
     expect(card?.textContent).toContain('Done');
   });
 
+  it('humanizes recent run times and switches older runs to clock time', async () => {
+    const now = new Date(2026, 5, 2, 12, 0, 0).getTime();
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await TestBed.inject(Router).navigateByUrl(projectPath('/tmp/project'));
+    await fixture.whenStable();
+
+    const page = fixture.debugElement.query(By.directive(ProjectPage)).componentInstance as ProjectPage;
+    const ago = (milliseconds: number) => new Date(now - milliseconds).toISOString();
+
+    expect(page.runTime(ago(0))).toBe('just now');
+    expect(page.runTime(ago(45_000))).toBe('45 seconds ago');
+    expect(page.runTime(ago(60_000))).toBe('1 minute ago');
+    expect(page.runTime(ago(59 * 60_000))).toBe('59 minutes ago');
+    expect(page.runTime(ago(60 * 60_000))).toBe('11:00');
+    expect(page.runTime(new Date(2026, 5, 1, 12).toISOString())).toBe('Jun 1, 12:00');
+    expect(page.runTime(new Date(2025, 5, 1, 12).toISOString())).toBe('Jun 1 2025, 12:00');
+
+    const plan = { groups: [], policies: {} };
+    page.client.state.set({
+      cwd: '/tmp/project', busy: false, plan, steps: [],
+      runs: [{ id: 'recent', caller: 'agent', plan, results: [], startedAt: ago(45_000), finishedAt: ago(40_000) }],
+    });
+    await fixture.whenStable();
+
+    const timestamp = fixture.nativeElement.querySelector('#history .run-row > span');
+    expect(timestamp.textContent).toBe('45 seconds ago');
+    expect(timestamp.getAttribute('title')).toBeTruthy();
+
+    vi.mocked(Date.now).mockReturnValue(now + 15_000);
+    page.client.state.update(state => state ? { ...state } : state);
+    await fixture.whenStable();
+
+    expect(timestamp.textContent).toBe('1 minute ago');
+  });
+
+  it('orders history downwards with the latest run closest to the results', async () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await TestBed.inject(Router).navigateByUrl(projectPath('/tmp/project'));
+    await fixture.whenStable();
+
+    const page = fixture.debugElement.query(By.directive(ProjectPage)).componentInstance as ProjectPage;
+    const plan = { groups: [], policies: {} };
+    const runs = Array.from({ length: 7 }, (_, index) => ({
+      id: `run-${index}`, caller: 'user' as const, plan, results: [],
+      startedAt: `2026-01-01T12:00:0${index}Z`, finishedAt: `2026-01-01T12:00:0${index}Z`,
+    }));
+
+    page.client.state.set({ cwd: '/tmp/project', busy: false, plan, steps: [], runs });
+    await fixture.whenStable();
+
+    expect(page.visibleRuns().map(run => run.id)).toEqual(['run-2', 'run-3', 'run-4', 'run-5', 'run-6']);
+    page.selectRun(runs[0]);
+    expect(page.visibleRuns().map(run => run.id)).toEqual(['run-0', 'run-2', 'run-3', 'run-4', 'run-5', 'run-6']);
+
+    page.expandedHistory.set(true);
+    expect(page.visibleRuns().map(run => run.id)).toEqual(runs.map(run => run.id));
+  });
+
   it('shows passed/total in the run row without a verbose summary', async () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
@@ -196,11 +260,108 @@ describe('App', () => {
 
     const compiled = fixture.nativeElement as HTMLElement;
     const count = compiled.querySelector('#history .run-row span:nth-child(3)');
+    expect(page.formatDuration(99_999)).toBe('99999ms');
+    expect(page.formatDuration(100_000)).toBe('100s');
+    expect(page.formatDuration(123_456)).toBe('123s');
+    expect(compiled.querySelector('.run-duration > span')?.textContent).toBe('60000ms');
+    expect(compiled.querySelector('.run-duration')?.getAttribute('aria-label')).toBe('Elapsed time: 60000 milliseconds');
     expect(count?.textContent).toBe('1/2');
     expect(count?.getAttribute('aria-label')).toBe('1 passed, 1 failed, 2 skipped');
     expect(compiled.querySelectorAll('#results app-result-card')).toHaveLength(2);
     expect(compiled.querySelector('#results')?.textContent).not.toContain('never-applicable');
     expect(compiled.querySelector<HTMLParagraphElement>('#summary')?.hidden).toBe(true);
+  });
+
+  it('expands and collapses section timings from the milliseconds button', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-01-01T12:00:04Z'));
+
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await TestBed.inject(Router).navigateByUrl(projectPath('/tmp/project'));
+    await fixture.whenStable();
+
+    const page = fixture.debugElement.query(By.directive(ProjectPage)).componentInstance as ProjectPage;
+    const plan = { groups: [['build', 'lint'], ['test'], ['disabled'], ['pending']], policies: {} };
+
+    page.client.state.set({
+      cwd: '/tmp/project', busy: true, plan, steps: [],
+      runs: [{
+        id: 'sections', caller: 'agent', plan, startedAt: '2026-01-01T12:00:00Z',
+        results: [
+          { name: 'build', policy: 'agent', status: 'passed', output: '', startedAt: '2026-01-01T12:00:00Z', finishedAt: '2026-01-01T12:00:01Z' },
+          { name: 'lint', policy: 'agent', status: 'passed', output: '', startedAt: '2026-01-01T12:00:00.100Z', finishedAt: '2026-01-01T12:00:02Z' },
+          { name: 'test', policy: 'agent', status: 'running', output: '', startedAt: '2026-01-01T12:00:02Z' },
+          { name: 'disabled', policy: 'off', status: 'skipped', output: '' },
+          { name: 'pending', policy: 'agent', status: 'pending', output: '' },
+        ],
+      }],
+    });
+    await fixture.whenStable();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    const toggle = compiled.querySelector<HTMLButtonElement>('.run-duration')!;
+    const sections = compiled.querySelector<HTMLElement>('.run-sections')!;
+
+    expect(toggle.hasAttribute('title')).toBe(false);
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(sections.hidden).toBe(true);
+
+    toggle.click();
+    await fixture.whenStable();
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(sections.hidden).toBe(false);
+    expect(Array.from(sections.querySelectorAll('summary'), child => child.textContent)).toEqual([
+      'Steps 12000ms',
+      'Steps 22000ms',
+      'Steps 30ms',
+      'Steps 40ms',
+    ]);
+
+    const section = sections.querySelector<HTMLDetailsElement>('.section-timing')!;
+    expect(section.open).toBe(false);
+    section.querySelector('summary')!.click();
+    expect(section.open).toBe(true);
+    expect(Array.from(section.querySelectorAll('.step-timing'), row =>
+      Array.from(row.children, child => child.textContent),
+    )).toEqual([
+      ['build', '1000ms', ''],
+      ['lint', '1900ms', ''],
+    ]);
+    section.querySelector('summary')!.click();
+    expect(section.open).toBe(false);
+
+    toggle.click();
+    await fixture.whenStable();
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(sections.hidden).toBe(true);
+  });
+
+  it('shows elapsed milliseconds for an ongoing run', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-01-01T12:00:01Z'));
+
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await TestBed.inject(Router).navigateByUrl(projectPath('/tmp/project'));
+    await fixture.whenStable();
+
+    const page = fixture.debugElement.query(By.directive(ProjectPage)).componentInstance as ProjectPage;
+    const plan = { groups: [], policies: {} };
+
+    page.client.state.set({
+      cwd: '/tmp/project', busy: true, plan, steps: [],
+      runs: [{ id: 'running', caller: 'agent', plan, startedAt: '2026-01-01T12:00:00Z', results: [] }],
+    });
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.querySelector('.run-duration > span')?.textContent).toBe('1000ms');
+
+    vi.mocked(Date.now).mockReturnValue(Date.parse('2026-01-01T12:00:02Z'));
+    page.client.state.update(state => state ? { ...state } : state);
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.querySelector('.run-duration > span')?.textContent).toBe('2000ms');
   });
 
   it.each([

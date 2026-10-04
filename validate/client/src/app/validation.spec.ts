@@ -78,7 +78,9 @@ describe('ValidationClient optimistic saves', () => {
     http.expectNone('api/plan');
 
     detection.flush(snapshot);
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise(resolve => {
+      setTimeout(resolve, 0);
+    });
     expect(client.plan()).toEqual(plan);
     expect(client.editingDisabled()).toBe(false);
     http.expectOne('api/plan').flush({ ...snapshot, plan });

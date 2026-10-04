@@ -13,29 +13,37 @@ const now = () => new Date().toISOString();
 export async function loadSteps(directory = join(import.meta.dir, "steps")): Promise<Step[]> {
   const files = await Array.fromAsync(new Bun.Glob("*.ts").scan({ cwd: directory }));
   files.sort();
+
   const steps: Step[] = [];
+
   for (const file of files) {
     const { default: step } = await import(pathToFileURL(join(directory, file)).href);
     if (!step || typeof step.name !== "string" || typeof step.detect !== "function" || typeof step.run !== "function") {
       throw new Error(`Invalid step module: ${file}`);
     }
+
     if (steps.some(existing => existing.name === step.name)) throw new Error(`Duplicate step: ${step.name}`);
     steps.push(step);
   }
+
   return steps;
 }
 
 export function checkPlan(value: unknown, steps: Step[]): Plan {
   const plan = value as Plan;
+
   if (!plan || !Array.isArray(plan.groups) || !plan.policies || typeof plan.policies !== "object" || Array.isArray(plan.policies)) {
     throw new Error("Plan must contain groups and policies");
   }
+
   if (plan.useNix !== undefined && typeof plan.useNix !== "boolean") throw new Error("useNix must be a boolean");
+
   const names = new Set(steps.map(step => step.name));
   const removed = plan.removed ?? [];
   if (!Array.isArray(removed) || removed.some(name => !names.has(name)) || new Set(removed).size !== removed.length) {
     throw new Error("Removed steps must be unique known step names");
   }
+
   const seen = new Set<string>();
   for (const group of plan.groups) {
     if (!Array.isArray(group) || group.length === 0) throw new Error("Groups must be non-empty arrays");
@@ -46,17 +54,22 @@ export function checkPlan(value: unknown, steps: Step[]): Plan {
       seen.add(name);
     }
   }
+
   for (const [name, policy] of Object.entries(plan.policies)) {
     if (!names.has(name)) throw new Error(`Unknown step: ${name}`);
     if (!["agent", "user", "off"].includes(policy)) throw new Error(`Invalid policy: ${policy}`);
   }
+
   const rawConfigs = plan.configs ?? {};
   if (!rawConfigs || typeof rawConfigs !== "object" || Array.isArray(rawConfigs)) throw new Error("configs must be an object");
+
   const configs: Record<string, Record<string, unknown>> = {};
+
   for (const step of steps) {
     const parameters = step.parameters ?? {};
     const raw = rawConfigs[step.name] ?? {};
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error(`Config for ${step.name} must be an object`);
+
     const config: Record<string, unknown> = {};
     for (const [key, parameter] of Object.entries(parameters)) {
       const value = (raw as Record<string, unknown>)[key] ?? parameter.default;
@@ -65,8 +78,10 @@ export function checkPlan(value: unknown, steps: Step[]): Plan {
       if (parameter.max !== undefined && value > parameter.max) throw new Error(`${step.name}.${key} is above maximum`);
       config[key] = value;
     }
+
     if (Object.keys(config).length) configs[step.name] = config;
   }
+
   return {
     groups: [...plan.groups.map(group => [...group]), ...steps.filter(step => !seen.has(step.name) && !removed.includes(step.name)).map(step => [step.name])],
     policies: Object.fromEntries(steps.map(step => [step.name, plan.policies[step.name] ?? "agent"])),
@@ -79,6 +94,7 @@ export function checkPlan(value: unknown, steps: Step[]): Plan {
 export function agentReport(run: Run): AgentReport {
   const failures = run.results.filter(result => result.policy === "agent" && result.status === "failed")
     .map(result => ({ name: result.name, output: result.output, exitCode: result.exitCode ?? 1 }));
+
   return { exitCode: failures[0]?.exitCode ?? 0, failures };
 }
 
@@ -101,12 +117,14 @@ export class Validation {
   static async create(cwd: string, options: { steps?: Step[]; persist?: boolean } = {}) {
     cwd = resolve(cwd);
     if (!(await stat(cwd)).isDirectory()) throw new Error(`Not a directory: ${cwd}`);
+
     const steps = options.steps ?? await loadSteps();
     const configFile = options.persist === false ? undefined : join(cwd, ".validate.json");
     let plan = checkPlan({ groups: [], policies: {} }, steps);
     if (configFile && await Bun.file(configFile).exists()) {
       plan = checkPlan(await Bun.file(configFile).json(), steps);
     }
+
     return new Validation(cwd, steps, plan, configFile);
   }
 
@@ -116,6 +134,7 @@ export class Validation {
 
   async configure(value: unknown) {
     if (this.busy) throw new Error("Validation is busy");
+
     const plan = checkPlan(value, this.steps);
     this.busy = true;
     try {
@@ -123,6 +142,7 @@ export class Validation {
         await Bun.write(this.configFile + ".tmp", JSON.stringify(plan, null, 2) + "\n");
         await rename(this.configFile + ".tmp", this.configFile);
       }
+
       this.plan = plan;
     } finally { this.busy = false; }
   }
@@ -130,6 +150,7 @@ export class Validation {
   private async context(): Promise<Context> {
     const file = Bun.file(join(this.cwd, "package.json"));
     const pkg = await file.exists() ? await file.json() : {};
+
     return { cwd: this.cwd, scripts: pkg?.scripts ?? {} };
   }
 
@@ -148,6 +169,7 @@ export class Validation {
     this.busy = true;
     try { await this.detectWith(await this.context()); }
     finally { this.busy = false; }
+
     return this.detections;
   }
 
@@ -159,22 +181,39 @@ export class Validation {
       id: crypto.randomUUID(), caller, startedAt: now(), plan,
       results: plan.groups.flat().map(name => ({ name, policy: plan.policies[name]!, status: "pending", output: "" })),
     };
-    this.runs.push(run);
+
     try {
       const context = await this.context();
       await this.detectWith(context);
+
+      for (const result of run.results) {
+        const detection = this.detections[result.name]!;
+
+        if (result.policy === "off" || (!detection.applicable && !detection.error)) {
+          result.status = "skipped";
+          result.reason = result.policy === "off" ? "Disabled" : "Not applicable";
+        }
+      }
+
+      this.runs.push(run);
+
       let blocked = false;
       for (const group of plan.groups) {
         await Promise.all(group.map(async name => {
           const result = run.results.find(result => result.name === name)!;
           const detection = this.detections[name]!;
-          if (result.policy === "off" || blocked || (!detection.applicable && !detection.error)) {
+
+          if (result.status === "skipped") return;
+
+          if (blocked) {
             result.status = "skipped";
-            result.reason = result.policy === "off" ? "Disabled" : blocked ? "Earlier agent-visible failure" : "Not applicable";
+            result.reason = "Earlier agent-visible failure";
             return;
           }
+
           result.status = "running";
           result.startedAt = now();
+
           try {
             if (detection.error) throw new Error(detection.error);
             const step = this.steps.find(step => step.name === name)!;
@@ -186,6 +225,7 @@ export class Validation {
             result.exitCode = 1;
           } finally { result.finishedAt = now(); }
         }));
+
         // User-only failures never block the agent's checks. A user run observes all groups.
         if (caller === "agent" && run.results.some(result => result.policy === "agent" && result.status === "failed")) blocked = true;
       }
@@ -198,9 +238,11 @@ export class Validation {
         if (result.policy !== "off") result.output = `${String(error)}\n`;
       }
     } finally {
+      if (!this.runs.includes(run)) this.runs.push(run);
       run.finishedAt = now();
       this.busy = false;
     }
+
     return run;
   }
 }
