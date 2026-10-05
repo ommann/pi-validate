@@ -182,7 +182,19 @@ export class Validation {
     await this.runDone;
   }
 
+  async runForAgent(): Promise<AgentReport> {
+    const ready = Promise.withResolvers<AgentReport>();
+    // The full run keeps ownership of the busy flag, cancellation, and UI results.
+    void this.execute("agent", run => ready.resolve(agentReport(run)))
+      .then(run => ready.resolve(agentReport(run)), ready.reject);
+    return ready.promise;
+  }
+
   async run(caller: "agent" | "user" = "agent"): Promise<Run> {
+    return this.execute(caller);
+  }
+
+  private async execute(caller: "agent" | "user", agentReady?: (run: Run) => void): Promise<Run> {
     if (this.busy) throw new Error("Validation is busy");
     this.busy = true;
     const controller = new AbortController();
@@ -214,9 +226,18 @@ export class Validation {
 
       this.runs.push(run);
 
+      const notifyAgent = () => {
+        if (!signal.aborted && run.results.every(result => result.policy !== "agent"
+          || !["pending", "running"].includes(result.status))) {
+          run.agentFinishedAt ??= now();
+          agentReady?.(run);
+        }
+      };
+      notifyAgent();
+
       let blocked = false;
       for (const group of plan.groups) {
-        await Promise.all(group.map(async name => {
+        const executions = group.map(async name => {
           const result = run.results.find(result => result.name === name)!;
           const detection = this.detections[name]!;
 
@@ -247,10 +268,24 @@ export class Validation {
             result.status = signal.aborted ? "cancelled" : "failed";
             result.exitCode = signal.aborted ? undefined : 1;
           } finally { result.finishedAt = now(); }
-        }));
+        });
 
-        // User-only failures never block the agent's checks. A user run observes all groups.
-        if (caller === "agent" && run.results.some(result => result.policy === "agent" && result.status === "failed")) blocked = true;
+        const agentCompletion = Promise.all(executions.filter((_execution, index) => plan.policies[group[index]!] === "agent"))
+          .then(() => {
+            // Settle later agent checks as soon as this section's agent results are known.
+            // User-facing checks still finish before the next section starts.
+            if (caller === "agent" && run.results.some(result => result.policy === "agent" && result.status === "failed")) {
+              blocked = true;
+              for (const result of run.results) {
+                if (result.policy === "agent" && result.status === "pending") {
+                  result.status = "skipped";
+                  result.reason = "Earlier agent-visible failure";
+                }
+              }
+            }
+            notifyAgent();
+          });
+        await Promise.all([...executions, agentCompletion]);
       }
     } catch (error) {
       for (const result of run.results) {
@@ -264,6 +299,7 @@ export class Validation {
       if (!this.runs.includes(run)) this.runs.push(run);
       if (signal.aborted) run.cancelled = true;
       run.finishedAt = now();
+      run.agentFinishedAt ??= run.finishedAt;
       this.busy = false;
       this.controller = undefined;
       this.runDone = undefined;

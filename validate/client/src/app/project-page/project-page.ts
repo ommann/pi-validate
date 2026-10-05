@@ -22,6 +22,7 @@ export class ProjectPage {
   readonly search = signal('');
 
   readonly expandedHistory = signal(false);
+  readonly showAgentDuration = signal(false);
   readonly expandedDurations = signal<ReadonlySet<string>>(new Set());
   readonly selectedId = signal('');
   readonly followLatest = signal(true);
@@ -145,8 +146,9 @@ export class ProjectPage {
     return milliseconds < 100_000 ? `${milliseconds}ms` : `${Math.round(milliseconds / 1000)}s`;
   }
 
-  duration(run: Run): number {
-    const end = run.finishedAt ? Date.parse(run.finishedAt) : Date.now();
+  duration(run: Run, audience: 'agent' | 'user' = 'user'): number {
+    const finishedAt = audience === 'agent' ? run.agentFinishedAt ?? run.finishedAt : run.finishedAt;
+    const end = finishedAt ? Date.parse(finishedAt) : Date.now();
 
     return Math.max(0, end - Date.parse(run.startedAt));
   }

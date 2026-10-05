@@ -31,9 +31,9 @@ Under the URL-encoded absolute project path, e.g. `/home/olli/Development/my-app
 - `GET api/state` — project, plan, detections, full run history/logs
 - `POST api/detect` with `{}` — check step applicability
 - `POST api/plan` with a plan — save configuration
-- `POST api/run` with `{"caller":"agent"}` or `{"caller":"user"}` — run and await completion
+- `POST api/run` with `{"caller":"agent"}` or `{"caller":"user"}` — run and await agent results or full completion, respectively
 
-POST requests require `Content-Type: application/json` and `X-Validate: 1`. Agent run responses contain only agent-visible failures and an exit code; user responses contain the run ID. Reads remain available during execution. Mutations on a busy project return 409; other projects are independent.
+POST requests require `Content-Type: application/json` and `X-Validate: 1`. Agent run responses contain only agent-visible failures and an exit code; user responses contain the run ID. Agent calls return once all agent-visible steps have finished or been skipped, without waiting for remaining user-facing analysis steps. The full run continues updating the Web UI and keeps the project busy until every step settles. Section ordering is unchanged: later sections still wait for the current section to finish. Reads remain available during execution. Mutations on a busy project return 409; other projects are independent.
 
 `GET /api/health` identifies the service and its current instance. `POST /api/restart` relaunches Bun to load server changes; the UI waits for the new instance and reloads. Restart is refused while any project is busy. It clears in-memory run history, but preserves project settings. Old `/projects/.../` links redirect to the shorter URLs.
 

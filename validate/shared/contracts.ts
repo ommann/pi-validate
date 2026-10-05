@@ -42,6 +42,7 @@ export type Run = {
   caller: 'agent' | 'user';
   cancelled?: boolean;
   startedAt: string;
+  agentFinishedAt?: string;
   finishedAt?: string;
   plan: Plan;
   results: Result[];

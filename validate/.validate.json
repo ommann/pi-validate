@@ -4,10 +4,6 @@
       "build"
     ],
     [
-      "test",
-      "lint"
-    ],
-    [
       "ast-grep-no-subscribe",
       "ast-grep-no-clear-interval",
       "ast-grep-no-discarded-router-navigation",
@@ -24,6 +20,12 @@
     [
       "stryker-mutation",
       "never-applicable"
+    ],
+    [
+      "lint"
+    ],
+    [
+      "test"
     ]
   ],
   "policies": {
@@ -37,7 +39,7 @@
     "lint": "agent",
     "never-applicable": "agent",
     "stryker-mutation": "off",
-    "test": "agent",
+    "test": "user",
     "typescript-empty-lines": "off",
     "vitest-coverage": "off"
   },

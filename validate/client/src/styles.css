@@ -318,9 +318,29 @@ button[aria-pressed="true"] {
   width: fit-content;
   max-width: 100%;
   box-sizing: border-box;
-  padding: 4px 8px 8px 16px;
+  padding: 4px 8px 8px;
   font-size: 13px;
   overflow-x: auto;
+}
+
+.run-audience-timings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.run-audience-timings > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.run-audience-timings .policy-pill {
+  margin-left: 0;
 }
 
 .timing-row {
@@ -352,9 +372,7 @@ button[aria-pressed="true"] {
 .step-timings {
   display: grid;
   grid-template-columns: max-content 8ch 1ch;
-  margin: 2px 0 4px 24px;
-  padding-left: 8px;
-  border-left: 1px solid #354057;
+  margin: 2px 0 4px 10px;
 }
 
 .step-timing {

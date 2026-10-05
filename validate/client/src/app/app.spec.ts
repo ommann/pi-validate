@@ -342,6 +342,8 @@ describe('App', () => {
 
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     expect(sections.hidden).toBe(false);
+    expect(sections.firstElementChild?.className).toBe('run-audience-timings');
+    expect(Array.from(sections.querySelectorAll('.run-audience-timings .policy-pill'), pill => pill.textContent)).toEqual(['Agent', 'User']);
     expect(Array.from(sections.querySelectorAll('summary'), child => child.textContent)).toEqual([
       'Steps 12000ms',
       'Steps 22000ms',
@@ -387,12 +389,33 @@ describe('App', () => {
     await fixture.whenStable();
 
     expect(fixture.nativeElement.querySelector('.run-duration > span')?.textContent).toBe('1000ms');
+    const audienceTimes = () => Array.from(fixture.nativeElement.querySelectorAll('.run-audience-timings > span'),
+      span => (span as HTMLElement).textContent?.trim());
+    expect(audienceTimes()).toEqual(['1000ms … Agent', '1000ms … User']);
 
     vi.mocked(Date.now).mockReturnValue(Date.parse('2026-01-01T12:00:02Z'));
-    page.client.state.update(state => state ? { ...state } : state);
+    page.client.state.update(state => state ? { ...state, runs: state.runs.map(run => ({ ...run, agentFinishedAt: '2026-01-01T12:00:00.500Z' })) } : state);
     await fixture.whenStable();
 
     expect(fixture.nativeElement.querySelector('.run-duration > span')?.textContent).toBe('2000ms');
+    expect(audienceTimes()).toEqual(['500ms Agent', '2000ms … User']);
+
+    page.client.state.update(state => state ? { ...state, runs: state.runs.map(run => ({ ...run, finishedAt: '2026-01-01T12:00:03Z' })) } : state);
+    await fixture.whenStable();
+    expect(audienceTimes()).toEqual(['500ms Agent', '3000ms User']);
+    expect(fixture.nativeElement.querySelector('.run-duration > span')?.textContent).toBe('3000ms');
+
+    const agentOnly = fixture.nativeElement.querySelector('#show-agent-duration') as HTMLInputElement;
+    expect(agentOnly.checked).toBe(false);
+    agentOnly.click();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('.run-duration > span')?.textContent).toBe('500ms');
+    expect(fixture.nativeElement.querySelector('.run-duration')?.getAttribute('aria-label')).toBe('Agent elapsed time: 500 milliseconds');
+    expect(audienceTimes()).toEqual(['500ms Agent', '3000ms User']);
+
+    agentOnly.click();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('.run-duration > span')?.textContent).toBe('3000ms');
   });
 
   it('moves whole sections independently of their nested step lists', async () => {

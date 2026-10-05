@@ -1,6 +1,6 @@
 import { join, resolve, sep } from "node:path";
 
-import { Validation, agentReport } from "./core.ts";
+import { Validation } from "./core.ts";
 import { projectPath } from "./routes.ts";
 import { relaunchServer } from "./restart.ts";
 
@@ -131,8 +131,9 @@ export async function startServer(cwd = process.cwd(), port = 3210, options: Ser
           case "api/detect": await project.detect(); return json(project.snapshot());
           case "api/run": {
             if (!["agent", "user"].includes(body?.caller)) throw new Error("Caller must be agent or user");
-            const run = await project.run(body.caller);
-            return json(body.caller === "agent" ? agentReport(run) : { id: run.id });
+            if (body.caller === "agent") return json(await project.runForAgent());
+            const run = await project.run("user");
+            return json({ id: run.id });
           }
           default: return json({ error: "Not found" }, 404);
         }
