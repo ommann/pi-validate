@@ -227,7 +227,7 @@ export class Validation {
       this.runs.push(run);
 
       const notifyAgent = () => {
-        if (!signal.aborted && run.results.every(result => result.policy !== "agent"
+        if (caller === "agent" && !signal.aborted && run.results.every(result => result.policy !== "agent"
           || !["pending", "running"].includes(result.status))) {
           run.agentFinishedAt ??= now();
           agentReady?.(run);
@@ -299,7 +299,7 @@ export class Validation {
       if (!this.runs.includes(run)) this.runs.push(run);
       if (signal.aborted) run.cancelled = true;
       run.finishedAt = now();
-      run.agentFinishedAt ??= run.finishedAt;
+      if (caller === "agent") run.agentFinishedAt ??= run.finishedAt;
       this.busy = false;
       this.controller = undefined;
       this.runDone = undefined;

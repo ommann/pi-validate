@@ -86,10 +86,6 @@
 
   <section>
     <h2>Runs</h2>
-    <label class="execution-option">
-      <input id="show-agent-duration" type="checkbox" [checked]="showAgentDuration()" (change)="showAgentDuration.set(checked($event))">
-      Show agent duration only
-    </label>
     <button id="history-more" class="more" [hidden]="(client.state()?.runs?.length ?? 0) <= 5" (click)="expandedHistory.set(!expandedHistory())">{{ expandedHistory() ? 'Hide older' : 'Show older (' + ((client.state()?.runs?.length ?? 0) - 5) + ')' }}</button>
     <div id="history" class="run-list" aria-label="Run history">
       @for (run of visibleRuns(); track run.id) {
@@ -99,10 +95,12 @@
             <span class="run-caller policy-pill" [attr.data-caller]="run.caller" [attr.data-policy]="run.caller">{{ run.caller === 'user' ? 'User' : 'Agent' }}</span>
             <span [attr.aria-label]="count(run, 'passed') + ' passed, ' + count(run, 'failed') + ' failed, ' + count(run, 'skipped') + ' skipped'">{{ count(run, 'passed') }}/{{ run.results.length - count(run, 'skipped') }}{{ run.finishedAt ? '' : ' …' }}</span>
           </button>
-          <button class="run-duration" [attr.aria-label]="(showAgentDuration() ? 'Agent elapsed time: ' : 'Elapsed time: ') + duration(run, showAgentDuration() ? 'agent' : 'user') + ' milliseconds'" [attr.aria-expanded]="expandedDurations().has(run.id)" [attr.aria-controls]="'duration-' + run.id" (click)="toggleDuration(run.id)"><span>{{ formatDuration(duration(run, showAgentDuration() ? 'agent' : 'user')) }}</span><span aria-hidden="true">{{ expandedDurations().has(run.id) ? '▾' : '▸' }}</span></button>
+          <button class="run-duration" [attr.aria-label]="(run.caller === 'agent' ? 'Agent elapsed time: ' : 'Elapsed time: ') + duration(run, run.caller) + ' milliseconds'" [attr.aria-expanded]="expandedDurations().has(run.id)" [attr.aria-controls]="'duration-' + run.id" (click)="toggleDuration(run.id)"><span>{{ formatDuration(duration(run, run.caller)) }}</span><span aria-hidden="true">{{ expandedDurations().has(run.id) ? '▾' : '▸' }}</span></button>
           <div class="run-sections" [id]="'duration-' + run.id" [hidden]="!expandedDurations().has(run.id)">
             <div class="run-audience-timings">
-              <span title="Time until agent results are ready">{{ formatDuration(duration(run, 'agent')) }}{{ run.agentFinishedAt || run.finishedAt ? '' : ' …' }} <span class="policy-pill" data-policy="agent">Agent</span></span>
+              @if (run.caller === 'agent') {
+                <span title="Time until agent results are ready">{{ formatDuration(duration(run, 'agent')) }}{{ run.agentFinishedAt || run.finishedAt ? '' : ' …' }} <span class="policy-pill" data-policy="agent">Agent</span></span>
+              }
               <span title="Time until the full run finishes">{{ formatDuration(duration(run)) }}{{ run.finishedAt ? '' : ' …' }} <span class="policy-pill" data-policy="user">User</span></span>
             </div>
             @for (section of durationDetails(run); track $index) {

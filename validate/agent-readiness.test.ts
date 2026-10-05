@@ -110,6 +110,13 @@ test("no agent checks returns while user-facing analysis continues and remains c
   expect(validation.busy).toBe(false);
 }));
 
+test("user-initiated runs have no agent response timestamp", () => fixture(async cwd => {
+  const validation = await Validation.create(cwd, { persist: false, steps: [step("check", async () => 0)] });
+  const run = await validation.run("user");
+  expect(run.finishedAt).toBeDefined();
+  expect(run.agentFinishedAt).toBeUndefined();
+}));
+
 test("HTTP agent response finishes before user-facing analysis while state and stop remain available", () => fixture(async cwd => {
   await Bun.write(join(cwd, "package.json"), JSON.stringify({ scripts: { lint: "echo user-started; sleep 30", test: "echo agent-done" } }));
   const server = await startServer(cwd, 0, { persist: false });

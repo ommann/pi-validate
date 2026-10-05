@@ -22,7 +22,6 @@ export class ProjectPage {
   readonly search = signal('');
 
   readonly expandedHistory = signal(false);
-  readonly showAgentDuration = signal(false);
   readonly expandedDurations = signal<ReadonlySet<string>>(new Set());
   readonly selectedId = signal('');
   readonly followLatest = signal(true);
