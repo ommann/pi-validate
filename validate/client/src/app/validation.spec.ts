@@ -75,6 +75,49 @@ describe('ValidationClient optimistic saves', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(client.state()).toEqual(snapshot);
+    expect(client.error()).toBe('');
+  });
+
+  it('keeps action errors through successful polls and connection recovery until that action is retried', async () => {
+    client.openProject('/tmp/project');
+    http.expectOne('/tmp/project/api/state').flush(snapshot);
+    await vi.advanceTimersByTimeAsync(0);
+    http.expectOne('/tmp/project/api/detect').flush(snapshot);
+    await vi.advanceTimersByTimeAsync(0);
+
+    const saved = client.save({ ...snapshot.plan, useNix: true });
+    await vi.advanceTimersByTimeAsync(0);
+    http.expectOne('/tmp/project/api/plan').flush({ error: 'Cannot save' }, { status: 409, statusText: 'Conflict' });
+    await saved;
+    expect(client.error()).toContain('Cannot save');
+
+    await vi.advanceTimersByTimeAsync(500);
+    http.expectOne('/tmp/project/api/state').flush(snapshot);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.error()).toContain('Cannot save');
+
+    client.requestDetection();
+    await vi.advanceTimersByTimeAsync(0);
+    http.expectOne('/tmp/project/api/detect').flush(snapshot);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.error()).toContain('Cannot save');
+
+    await vi.advanceTimersByTimeAsync(500);
+    http.expectOne('/tmp/project/api/state').error(new ProgressEvent('error'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.error()).toContain('Cannot connect');
+
+    await vi.advanceTimersByTimeAsync(500);
+    http.expectOne('/tmp/project/api/state').flush(snapshot);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.error()).toContain('Cannot save');
+
+    const retried = client.save(snapshot.plan);
+    expect(client.error()).toBe('');
+    await vi.advanceTimersByTimeAsync(0);
+    http.expectOne('/tmp/project/api/plan').flush(snapshot);
+    await retried;
+    expect(client.error()).toBe('');
   });
 
   it('runs as a user and stays pending until authoritative state is refreshed', async () => {
@@ -132,6 +175,12 @@ describe('ValidationClient optimistic saves', () => {
     expect(client.error()).toContain('Cannot stop');
     expect(client.running()).toBe(true);
     expect(client.stopping()).toBe(false);
+
+    const retried = client.stop();
+    expect(client.error()).toBe('');
+    http.expectOne('api/stop').flush({ ...snapshot, running: false });
+    await retried;
+    expect(client.error()).toBe('');
   });
 
   it('does not request cancellation when idle', async () => {

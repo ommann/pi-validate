@@ -27,7 +27,9 @@ export class ValidationClient {
   readonly saving = signal(false);
   private readonly detecting = signal(false);
   readonly restarting = signal(false);
-  readonly error = signal('');
+  private readonly connectionError = signal('');
+  private readonly actionError = signal<{ source: 'run' | 'save' | 'stop' | 'detect' | 'restart'; message: string } | null>(null);
+  readonly error = computed(() => this.connectionError() || this.actionError()?.message || '');
 
   readonly editingDisabled = computed(() => this.restarting() || !this.state()
     || !!this.state()?.runs.some(run => !run.finishedAt)
@@ -76,7 +78,8 @@ export class ValidationClient {
     this.starting.set(false);
     this.stopping.set(false);
     this.restarting.set(false);
-    this.error.set('');
+    this.connectionError.set('');
+    this.actionError.set(null);
     this.polling = false;
     this.detectionRequested = true;
 
@@ -108,24 +111,29 @@ export class ValidationClient {
     }
   }
 
+  private clearActionError(source: 'run' | 'save' | 'stop' | 'detect' | 'restart'): void {
+    if (this.actionError()?.source === source) this.actionError.set(null);
+  }
+
   private async action(operation: (generation: number) => Promise<unknown>): Promise<void> {
     if (this.disabled()) return;
 
     const generation = this.generation;
     this.pending.set(true);
-    this.error.set('');
+    this.clearActionError('run');
 
     try {
       await operation(generation);
     } catch (error) {
-      if (generation === this.generation) this.error.set(String(error));
+      if (generation === this.generation) this.actionError.set({ source: 'run', message: String(error) });
     } finally {
       if (generation === this.generation) {
         // Keep mutations serialized until the authoritative state is refreshed.
         try {
           this.accept(await this.api<Snapshot>('/api/state'), generation);
+          if (generation === this.generation) this.connectionError.set('');
         } catch (error) {
-          if (generation === this.generation) this.error.set(String(error));
+          if (generation === this.generation) this.connectionError.set(String(error));
         } finally {
           if (generation === this.generation) this.pending.set(false);
         }
@@ -142,12 +150,13 @@ export class ValidationClient {
     this.optimisticPlan = plan;
     this.saving.set(true);
     this.pending.set(true);
-    this.error.set('');
+    this.clearActionError('save');
     this.state.update(state => state ? { ...state, plan } : state);
 
     this.saveQueue = this.saveQueue.then(async () => {
       if (generation !== this.generation) { return; }
 
+      this.clearActionError('save');
       try {
         const next = await this.api<Snapshot>('/api/plan', plan);
         if (generation === this.generation) {
@@ -157,7 +166,7 @@ export class ValidationClient {
         }
       } catch (error) {
         if (generation === this.generation) {
-          this.error.set(String(error));
+          this.actionError.set({ source: 'save', message: String(error) });
           if (revision === this.saveRevision) {
             this.optimisticPlan = undefined;
             this.state.update(state => state ? { ...state, plan: this.confirmedPlan! } : state);
@@ -205,10 +214,11 @@ export class ValidationClient {
 
     const generation = this.generation;
     this.stopping.set(true);
+    this.clearActionError('stop');
     try {
       this.accept(await this.api<Snapshot>('/api/stop', {}), generation);
     } catch (error) {
-      if (generation === this.generation) this.error.set(String(error));
+      if (generation === this.generation) this.actionError.set({ source: 'stop', message: String(error) });
     } finally {
       if (generation === this.generation) this.stopping.set(false);
     }
@@ -225,6 +235,7 @@ export class ValidationClient {
     const generation = this.generation;
     this.detectionRequested = false;
     this.detecting.set(true);
+    this.clearActionError('detect');
 
     // Detection and saves share a queue, not a form-wide loading state.
     this.saveQueue = this.saveQueue.then(async () => {
@@ -233,7 +244,7 @@ export class ValidationClient {
       try {
         this.accept(await this.api<Snapshot>('/api/detect', {}), generation);
       } catch (error) {
-        if (generation === this.generation) { this.error.set(String(error)); }
+        if (generation === this.generation) { this.actionError.set({ source: 'detect', message: String(error) }); }
       } finally {
         if (generation === this.generation) { this.detecting.set(false); }
       }
@@ -249,9 +260,12 @@ export class ValidationClient {
 
     try {
       this.accept(await this.api<Snapshot>('/api/state'), generation);
-      if (generation === this.generation) await this.checkAvailability();
+      if (generation === this.generation && !this.restarting()) {
+        this.connectionError.set('');
+        await this.checkAvailability();
+      }
     } catch (error) {
-      if (generation === this.generation && !this.restarting()) this.error.set(String(error));
+      if (generation === this.generation && !this.restarting()) this.connectionError.set(String(error));
     } finally {
       if (generation === this.generation) this.polling = false;
     }
@@ -264,14 +278,14 @@ export class ValidationClient {
     this.cancel.next();
     this.restarting.set(true);
     this.pending.set(true);
-    this.error.set('');
+    this.clearActionError('restart');
 
     try {
       await firstValueFrom(this.serverControl.restart().pipe(takeUntil(this.cancel)));
 
       if (generation === this.generation) location.reload();
     } catch (error) {
-      if (generation === this.generation) this.error.set(String(error));
+      if (generation === this.generation) this.actionError.set({ source: 'restart', message: String(error) });
     } finally {
       if (generation === this.generation) {
         this.restarting.set(false);
