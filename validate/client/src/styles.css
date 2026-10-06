@@ -519,6 +519,15 @@ button[aria-pressed="true"] {
   font-weight: 600;
 }
 
+.result-duration {
+  float: right;
+  margin-left: 10px;
+  color: #9eafc4;
+  font-size: 13px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
 .policy-pill {
   display: inline-block;
   margin-left: 10px;

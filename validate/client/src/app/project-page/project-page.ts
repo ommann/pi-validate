@@ -153,7 +153,7 @@ export class ProjectPage {
   }
 
   formatDuration(milliseconds: number): string {
-    return milliseconds < 100_000 ? `${milliseconds}ms` : `${Math.round(milliseconds / 1000)}s`;
+    return milliseconds < 10_000 ? `${milliseconds}ms` : `${Math.round(milliseconds / 1000)}s`;
   }
 
   duration(run: Run, audience: 'agent' | 'user' = 'user'): number {

@@ -439,10 +439,10 @@ describe('App', () => {
 
     const compiled = fixture.nativeElement as HTMLElement;
     const count = compiled.querySelector('#history .run-row span:nth-child(3)');
-    expect(page.formatDuration(99_999)).toBe('99999ms');
-    expect(page.formatDuration(100_000)).toBe('100s');
+    expect(page.formatDuration(9_999)).toBe('9999ms');
+    expect(page.formatDuration(10_000)).toBe('10s');
     expect(page.formatDuration(123_456)).toBe('123s');
-    expect(compiled.querySelector('.run-duration > span')?.textContent).toBe('60000ms');
+    expect(compiled.querySelector('.run-duration > span')?.textContent).toBe('60s');
     expect(compiled.querySelector('.run-duration')?.getAttribute('aria-label')).toBe('Elapsed time: 60000 milliseconds');
     expect(count?.textContent).toBe('1/2');
     expect(count?.getAttribute('aria-label')).toBe('1 passed, 1 failed, 2 skipped');

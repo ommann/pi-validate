@@ -31,6 +31,16 @@ export class ResultCard {
     return this.caller() === 'user' ? 'user' : this.result().policy;
   }
 
+  duration(): string | null {
+    const result = this.result();
+    if (!result.startedAt || result.status === 'skipped') return null;
+
+    const end = result.finishedAt ? Date.parse(result.finishedAt) : Date.now();
+    const milliseconds = Math.max(0, end - Date.parse(result.startedAt));
+
+    return milliseconds < 10_000 ? `${milliseconds}ms` : `${Math.round(milliseconds / 1000)}s`;
+  }
+
   description(): string {
     const result = this.result();
 
