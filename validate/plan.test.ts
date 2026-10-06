@@ -24,9 +24,9 @@ test("dividers represent active groups; joining and separating preserve policy",
 });
 
 test("plan edits and dragging preserve Nix execution option", () => {
-  const nixPlan = { ...plan, useNix: true };
-  expect(editPlan(nixPlan, "lint", "user").useNix).toBe(true);
-  expect(dropStep(nixPlan, "lint", 1).useNix).toBe(true);
+  const nixPlan = { ...plan, options: { useNix: true, runsFirst: true, newestRunsFirst: true } };
+  expect(editPlan(nixPlan, "lint", "user").options).toEqual(nixPlan.options);
+  expect(dropStep(nixPlan, "lint", 1).options).toEqual(nixPlan.options);
 });
 
 test("reorder groups, turn off, and add from catalog", () => {

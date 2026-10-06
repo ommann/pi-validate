@@ -30,13 +30,21 @@ export async function loadSteps(directory = join(import.meta.dir, "steps")): Pro
 }
 
 export function checkPlan(value: unknown, steps: Step[]): Plan {
-  const plan = value as Plan;
+  const plan = value as Plan & { useNix?: boolean };
 
   if (!plan || !Array.isArray(plan.groups) || !plan.policies || typeof plan.policies !== "object" || Array.isArray(plan.policies)) {
     throw new Error("Plan must contain groups and policies");
   }
 
   if (plan.useNix !== undefined && typeof plan.useNix !== "boolean") throw new Error("useNix must be a boolean");
+
+  if (plan.options !== undefined) {
+    if (!plan.options || typeof plan.options !== "object" || Array.isArray(plan.options)) throw new Error("options must be an object");
+    for (const [key, value] of Object.entries(plan.options)) {
+      if (!["useNix", "runsFirst", "newestRunsFirst"].includes(key)) throw new Error(`Unknown option: ${key}`);
+      if (typeof value !== "boolean") throw new Error(`options.${key} must be a boolean`);
+    }
+  }
 
   const names = new Set(steps.map(step => step.name));
   const removed = plan.removed ?? [];
@@ -86,7 +94,7 @@ export function checkPlan(value: unknown, steps: Step[]): Plan {
     groups: [...plan.groups.map(group => [...group]), ...steps.filter(step => !seen.has(step.name) && !removed.includes(step.name)).map(step => [step.name])],
     policies: Object.fromEntries(steps.map(step => [step.name, plan.policies[step.name] ?? "agent"])),
     removed: [...removed],
-    useNix: plan.useNix ?? false,
+    options: { ...plan.options, useNix: plan.options?.useNix ?? plan.useNix ?? false },
     configs,
   };
 }
@@ -260,7 +268,7 @@ export class Validation {
           try {
             if (detection.error) throw new Error(detection.error);
             const step = this.steps.find(step => step.name === name)!;
-            result.exitCode = await step.run({ ...context, useNix: plan.useNix, config: plan.configs?.[name] ?? {}, output: (_stream, text) => { result.output += text; } });
+            result.exitCode = await step.run({ ...context, useNix: plan.options?.useNix, config: plan.configs?.[name] ?? {}, output: (_stream, text) => { result.output += text; } });
             result.status = signal.aborted ? "cancelled" : result.exitCode === 0 ? "passed" : "failed";
             if (signal.aborted) result.exitCode = undefined;
           } catch (error) {

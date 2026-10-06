@@ -85,7 +85,7 @@ describe('ValidationClient optimistic saves', () => {
     http.expectOne('/tmp/project/api/detect').flush(snapshot);
     await vi.advanceTimersByTimeAsync(0);
 
-    const saved = client.save({ ...snapshot.plan, useNix: true });
+    const saved = client.save({ ...snapshot.plan, options: { useNix: true } });
     await vi.advanceTimersByTimeAsync(0);
     http.expectOne('/tmp/project/api/plan').flush({ error: 'Cannot save' }, { status: 409, statusText: 'Conflict' });
     await saved;
@@ -247,7 +247,7 @@ describe('ValidationClient optimistic saves', () => {
     await Promise.resolve();
     const detection = http.expectOne('api/detect');
 
-    const plan = { ...snapshot.plan, useNix: true };
+    const plan = { ...snapshot.plan, options: { useNix: true } };
     const saved = client.save(plan);
     expect(client.editingDisabled()).toBe(false);
     expect(client.plan()).toEqual(plan);

@@ -4,18 +4,38 @@
     <div class="row">
       <button id="run" [disabled]="client.running() ? client.stopping() || client.state()?.stopping : client.disabled()" [attr.aria-busy]="client.state()?.busy || client.pending()" (click)="client.running() ? client.stop() : run()">{{ client.running() ? 'Stop' : 'Run' }}</button>
       <button id="restart-server" [disabled]="client.disabled()" [attr.aria-busy]="client.restarting()" (click)="client.restart()">Restart</button>
+      <button id="options" aria-label="Options" title="Options" (click)="openOptions(options)">⚙</button>
     </div>
   </header>
 
+  <ng-template #options let-dialogRef="dialogRef">
+    <div class="options-dialog">
+      <div class="options-heading">
+        <h2 id="options-title">Options</h2>
+        <button id="options-close" aria-label="Close options" (click)="dialogRef.close()">×</button>
+      </div>
+      <label class="execution-option">
+        <input id="use-nix" type="checkbox" [checked]="client.plan()?.options?.useNix" [disabled]="client.editingDisabled()" (change)="saveOption('useNix', checked($event))">
+        Use project’s Nix shell
+      </label>
+      <label class="execution-option">
+        <input id="runs-first" type="checkbox" [checked]="runsFirst()" [disabled]="client.editingDisabled()" (change)="saveOption('runsFirst', checked($event))">
+        Show Runs before Validation steps
+      </label>
+      <label class="execution-option">
+        <input id="newest-runs-first" type="checkbox" [checked]="newestRunsFirst()" [disabled]="client.editingDisabled()" (change)="saveOption('newestRunsFirst', checked($event))">
+        Order run history: newest to oldest
+      </label>
+    </div>
+  </ng-template>
+
   <p id="error" role="alert">{{ client.error() }}</p>
 
+  <div class="content-sections" [class.runs-first]="runsFirst()">
   <section>
-    <h2>Validation steps</h2>
-    <label class="execution-option">
-      <input id="use-nix" type="checkbox" [checked]="client.state()?.plan?.useNix" [disabled]="client.editingDisabled()" (change)="useNix(checked($event))">
-      Use project’s Nix shell
-    </label>
-
+    <details class="section-disclosure" id="steps-disclosure" open>
+    <summary class="section-heading"><h2>Validation steps</h2></summary>
+    <div id="steps-content">
     <div id="steps" class="step-groups" cdkDropList [cdkDropListData]="groups()" [cdkDropListDisabled]="client.editingDisabled()" [cdkDropListSortPredicate]="sectionSort" (cdkDropListDropped)="dropSection($event)">
       <div cdkDropListGroup>
       @for (group of groups(); track $index; let index = $index) {
@@ -82,10 +102,14 @@
         }
       </div>
     </details>
+    </div>
+    </details>
   </section>
 
   <section>
-    <h2>Runs</h2>
+    <details class="section-disclosure" id="runs-disclosure" open>
+    <summary class="section-heading"><h2>Runs</h2></summary>
+    <div id="runs-content">
     <button id="history-more" class="more" [hidden]="(client.state()?.runs?.length ?? 0) <= 5" (click)="expandedHistory.set(!expandedHistory())">{{ expandedHistory() ? 'Hide older' : 'Show older (' + ((client.state()?.runs?.length ?? 0) - 5) + ')' }}</button>
     <div id="history" class="run-list" aria-label="Run history">
       @for (run of visibleRuns(); track run.id) {
@@ -125,5 +149,8 @@
         }
       }
     </div>
+    </div>
+    </details>
   </section>
+  </div>
 </main>

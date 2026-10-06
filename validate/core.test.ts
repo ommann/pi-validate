@@ -29,7 +29,7 @@ test("project settings default without a file, persist as JSON, and move with th
     groups: [["lint", "test"]],
     policies: { lint: "agent", test: "user", build: "off" },
     removed: ["build"],
-    useNix: true,
+    options: { useNix: true },
   });
   expect(await Bun.file(configFile).text()).toBe(JSON.stringify(validation.plan, null, 2) + "\n");
   expect(await Bun.file(configFile + ".tmp").exists()).toBe(false);
@@ -39,6 +39,32 @@ test("project settings default without a file, persist as JSON, and move with th
   await rename(cwd, moved);
   expect((await Validation.create(moved, { steps })).plan).toEqual(validation.plan);
 }));
+
+test("UI options persist across project reloads and unrelated plan changes", () => fixture(async cwd => {
+  const steps = [fake("lint")];
+  const validation = await Validation.create(cwd, { steps });
+  const options = { useNix: true, runsFirst: true, newestRunsFirst: true };
+  await validation.configure({ ...validation.plan, options });
+  expect((await Bun.file(join(cwd, ".validate.json")).json()).options).toEqual(options);
+  const reloaded = await Validation.create(cwd, { steps });
+  expect(reloaded.plan.options).toEqual(options);
+  await reloaded.configure({ ...reloaded.plan, policies: { lint: 'user' } });
+  expect((await Validation.create(cwd, { steps })).plan.options).toEqual(options);
+  await reloaded.configure({ ...reloaded.plan, options: { ...options, runsFirst: false } });
+  expect((await Validation.create(cwd, { steps })).plan.options).toEqual({ useNix: true, runsFirst: false, newestRunsFirst: true });
+}));
+
+test("UI options reject malformed values and unknown keys", () => {
+  const plan = { groups: [], policies: {} };
+  for (const options of [null, [], "bad", { runsFirst: "yes" }, { newestRunsFirst: 1 }, { unknown: true }]) {
+    expect(() => checkPlan({ ...plan, options }, [])).toThrow();
+  }
+  expect(checkPlan(plan, []).options).toEqual({ useNix: false });
+  const migrated = checkPlan({ ...plan, useNix: true }, []);
+  expect(migrated.options).toEqual({ useNix: true });
+  expect(migrated).not.toHaveProperty('useNix');
+  expect(checkPlan({ ...plan, useNix: true, options: { useNix: false } }, []).options?.useNix).toBe(false);
+});
 
 test("persist false neither reads nor changes project settings", () => fixture(async cwd => {
   const steps = [fake("lint")];
@@ -203,10 +229,10 @@ test("Nix execution prefix is configurable and passes through the central runner
   let useNix: boolean | undefined;
   const step: Step = { name: "build", detect: () => true, run: async context => { useNix = context.useNix; return 0; } };
   const validation = await Validation.create(cwd, { steps: [step], persist: false });
-  await validation.configure({ groups: [["build"]], policies: {}, useNix: true });
+  await validation.configure({ groups: [["build"]], policies: {}, options: { useNix: true } });
   const run = await validation.run();
   expect(useNix).toBe(true);
-  expect(run.plan.useNix).toBe(true);
+  expect(run.plan.options?.useNix).toBe(true);
   expect(() => checkPlan({ groups: [], policies: {}, useNix: "yes" }, [step])).toThrow("boolean");
 }));
 

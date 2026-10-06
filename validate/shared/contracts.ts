@@ -16,7 +16,7 @@ export type Plan = {
   groups: string[][];
   policies: Record<string, Policy>;
   removed?: string[];
-  useNix?: boolean;
+  options?: { useNix?: boolean; runsFirst?: boolean; newestRunsFirst?: boolean };
   configs?: Record<string, Record<string, unknown>>;
 };
 

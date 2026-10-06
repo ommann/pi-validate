@@ -44,6 +44,154 @@ describe('App', () => {
     expect(compiled.querySelector<HTMLButtonElement>('#run')?.disabled).toBe(false);
   });
 
+  it('opens compact options beside Restart and saves Nix changes immediately', async () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await TestBed.inject(Router).navigateByUrl(projectPath('/tmp/project'));
+    await fixture.whenStable();
+    const page = fixture.debugElement.query(By.directive(ProjectPage)).componentInstance as ProjectPage;
+    const compiled = fixture.nativeElement as HTMLElement;
+    const save = vi.spyOn(page.client, 'save').mockImplementation(async plan => {
+      page.client.state.update(state => state ? { ...state, plan } : state);
+    });
+    const options = compiled.querySelector<HTMLButtonElement>('#options')!;
+    expect(compiled.querySelector('#restart-server')?.nextElementSibling).toBe(options);
+    expect(compiled.querySelector('#use-nix')).toBeNull();
+
+    options.click();
+    await fixture.whenStable();
+    const checkbox = document.querySelector<HTMLInputElement>('.options-dialog #use-nix')!;
+    expect(document.querySelector('#options-title')?.textContent).toBe('Options');
+    expect(checkbox.checked).toBe(false);
+    checkbox.click();
+    await fixture.whenStable();
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ options: { useNix: true } }));
+    expect(checkbox.checked).toBe(true);
+
+    const runsFirst = document.querySelector<HTMLInputElement>('#runs-first')!;
+    expect(runsFirst.checked).toBe(false);
+    runsFirst.click();
+    await fixture.whenStable();
+    expect(compiled.querySelector('.content-sections')?.classList.contains('runs-first')).toBe(true);
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ options: { useNix: true, runsFirst: true } }));
+    runsFirst.click();
+    await fixture.whenStable();
+    expect(compiled.querySelector('.content-sections')?.classList.contains('runs-first')).toBe(false);
+
+    page.client.state.update(state => state ? { ...state, busy: true, running: true,
+      runs: [{ id: 'active', caller: 'user', startedAt: new Date().toISOString(), plan: state.plan, results: [] }],
+    } : state);
+    await fixture.whenStable();
+    expect(checkbox.disabled).toBe(true);
+    expect(runsFirst.disabled).toBe(true);
+    document.querySelector<HTMLButtonElement>('#options-close')!.click();
+    await fixture.whenStable();
+    expect(document.querySelector('.options-dialog')).toBeNull();
+
+    options.click();
+    await fixture.whenStable();
+    document.querySelector<HTMLElement>('.cdk-overlay-backdrop')!.click();
+    await fixture.whenStable();
+    expect(document.querySelector('.options-dialog')).toBeNull();
+
+    options.click();
+    await fixture.whenStable();
+    document.querySelector<HTMLElement>('.cdk-overlay-pane')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }));
+    await fixture.whenStable();
+    expect(document.querySelector('.options-dialog')).toBeNull();
+  });
+
+  it('reverses visible run history without changing stored history or selection', async () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await TestBed.inject(Router).navigateByUrl(projectPath('/tmp/project'));
+    await fixture.whenStable();
+    const page = fixture.debugElement.query(By.directive(ProjectPage)).componentInstance as ProjectPage;
+    vi.spyOn(page.client, 'save').mockImplementation(async plan => {
+      page.client.state.update(state => state ? { ...state, plan } : state);
+    });
+    const plan = { groups: [], policies: {} };
+    const runs = Array.from({ length: 7 }, (_, index) => ({
+      id: `run-${index}`, caller: 'user' as const, plan, results: [],
+      startedAt: '2026-01-01T12:00:00Z', finishedAt: '2026-01-01T12:00:01Z',
+    }));
+    page.client.state.update(state => state ? { ...state, runs } : state);
+    await fixture.whenStable();
+    const selected = page.selectedId();
+    expect(page.visibleRuns().map(run => run.id)).toEqual(['run-2', 'run-3', 'run-4', 'run-5', 'run-6']);
+
+    fixture.nativeElement.querySelector('#options').click();
+    await fixture.whenStable();
+    const checkbox = document.querySelector<HTMLInputElement>('#newest-runs-first')!;
+    checkbox.click();
+    await fixture.whenStable();
+    expect(page.visibleRuns().map(run => run.id)).toEqual(['run-6', 'run-5', 'run-4', 'run-3', 'run-2']);
+    expect(page.client.state()?.runs).toEqual(runs);
+    expect(page.selectedId()).toBe(selected);
+    page.expandedHistory.set(true);
+    await fixture.whenStable();
+    expect(page.visibleRuns().map(run => run.id)).toEqual([...runs].reverse().map(run => run.id));
+    checkbox.click();
+    await fixture.whenStable();
+    expect(page.visibleRuns().map(run => run.id)).toEqual(runs.map(run => run.id));
+    document.querySelector<HTMLButtonElement>('#options-close')!.click();
+  });
+
+  it('loads saved options and preserves them when another setting changes', async () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await TestBed.inject(Router).navigateByUrl(projectPath('/tmp/project'));
+    await fixture.whenStable();
+    const page = fixture.debugElement.query(By.directive(ProjectPage)).componentInstance as ProjectPage;
+    const savedOptions = { runsFirst: true, newestRunsFirst: true };
+    page.client.state.update(state => state ? { ...state, plan: { ...state.plan, options: savedOptions } } : state);
+    await fixture.whenStable();
+    const save = vi.spyOn(page.client, 'save').mockResolvedValue();
+    expect(page.runsFirst()).toBe(true);
+    expect(page.newestRunsFirst()).toBe(true);
+    fixture.nativeElement.querySelector('#options').click();
+    await fixture.whenStable();
+    expect(document.querySelector<HTMLInputElement>('#runs-first')!.checked).toBe(true);
+    expect(document.querySelector<HTMLInputElement>('#newest-runs-first')!.checked).toBe(true);
+    document.querySelector<HTMLInputElement>('#use-nix')!.click();
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ options: { ...savedOptions, useNix: true } }));
+    document.querySelector<HTMLInputElement>('#runs-first')!.click();
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ options: { runsFirst: false, newestRunsFirst: true } }));
+    document.querySelector<HTMLButtonElement>('#options-close')!.click();
+  });
+
+  it('collapses each section independently while keeping its heading visible', async () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await TestBed.inject(Router).navigateByUrl(projectPath('/tmp/project'));
+    await fixture.whenStable();
+    const compiled = fixture.nativeElement as HTMLElement;
+    const steps = compiled.querySelector<HTMLDetailsElement>('#steps-disclosure')!;
+    const runs = compiled.querySelector<HTMLDetailsElement>('#runs-disclosure')!;
+    const stepsToggle = steps.querySelector<HTMLElement>('summary')!;
+    const runsToggle = runs.querySelector<HTMLElement>('summary')!;
+    expect(steps.open).toBe(true);
+    expect(runs.open).toBe(true);
+
+    stepsToggle.click();
+    await fixture.whenStable();
+    expect(steps.open).toBe(false);
+    expect(runs.open).toBe(true);
+    expect(stepsToggle.querySelector('h2')?.textContent).toBe('Validation steps');
+
+    runsToggle.click();
+    await fixture.whenStable();
+    expect(runs.open).toBe(false);
+    stepsToggle.click();
+    await fixture.whenStable();
+    expect(steps.open).toBe(true);
+    expect(runs.open).toBe(false);
+    runsToggle.click();
+    await fixture.whenStable();
+    expect(runs.open).toBe(true);
+  });
+
   it('uses only Run and Stop labels and disables Stop during cleanup', async () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
@@ -424,7 +572,7 @@ describe('App', () => {
     const plan = {
       groups: [['build', 'lint'], ['test'], ['new-rule']],
       policies: { build: 'agent', lint: 'agent', test: 'agent', 'new-rule': 'user' },
-      configs: { 'new-rule': { threshold: 80 } }, useNix: true,
+      configs: { 'new-rule': { threshold: 80 } }, options: { useNix: true },
     } as const;
     page.client.state.set({
       cwd: '/tmp/project', busy: false, steps: [], runs: [],
@@ -510,7 +658,7 @@ describe('App', () => {
     expect(compiled.querySelector('#new-section')).toBeNull();
     expect(compiled.querySelector('.empty-section')).toBeNull();
     expect(compiled.querySelector('.phantom-section')?.childElementCount).toBe(0);
-    expect(compiled.querySelector('[title]')).toBeNull();
+    expect(compiled.querySelector('#steps [title]')).toBeNull();
     expect(drags.map(drag => drag.data)).toEqual(['build', 'lint']);
     expect(fixture.debugElement.queryAll(By.directive(CdkDragHandle))).toHaveLength(4);
     expect(lists[0].getSortedItems()).toContain(drags[0]);

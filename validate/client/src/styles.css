@@ -1,3 +1,5 @@
+@import '@angular/cdk/overlay-prebuilt.css';
+
 :root {
   color-scheme: dark;
   font-family: system-ui, sans-serif;
@@ -96,6 +98,61 @@ label {
 
 .actions {
   margin-top: 12px;
+}
+
+.section-heading {
+  cursor: pointer;
+  font-size: 20px;
+}
+
+.section-heading h2 {
+  display: inline;
+  margin: 0;
+}
+
+#steps-content,
+#runs-content {
+  padding-top: 10px;
+}
+
+.content-sections {
+  display: flex;
+  flex-direction: column;
+}
+
+.content-sections.runs-first {
+  flex-direction: column-reverse;
+}
+
+.options-dialog {
+  box-sizing: border-box;
+  width: min(340px, calc(100vw - 32px));
+  padding: 16px;
+  background: #1b2230;
+  border: 1px solid #354057;
+  border-radius: 6px;
+  box-shadow: 0 12px 36px #0006;
+}
+
+.options-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.options-heading h2,
+.options-dialog .execution-option {
+  margin: 0;
+}
+
+.options-dialog .execution-option + .execution-option {
+  margin-top: 12px;
+}
+
+#options-close {
+  padding: 2px 8px;
+  font-size: 20px;
 }
 
 .execution-option {

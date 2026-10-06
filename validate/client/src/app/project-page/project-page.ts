@@ -1,5 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, linkedSignal, signal, untracked } from '@angular/core';
 import { DatePipe } from '@angular/common';
+import type { TemplateRef } from '@angular/core';
+import { Dialog, DialogModule } from '@angular/cdk/dialog';
 import { format, formatDistanceStrict, isSameDay, isSameYear } from 'date-fns';
 import { CdkDrag, CdkDragHandle, CdkDropList, CdkDropListGroup, moveItemInArray, transferArrayItem } from '@angular/cdk/drag-drop';
 import type { CdkDragDrop } from '@angular/cdk/drag-drop';
@@ -11,7 +13,7 @@ import { ResultCard } from '@app/result-card/result-card';
 
 @Component({
   selector: 'app-project-page',
-  imports: [DatePipe, ResultCard, CdkDrag, CdkDragHandle, CdkDropList, CdkDropListGroup],
+  imports: [DatePipe, ResultCard, CdkDrag, CdkDragHandle, CdkDropList, CdkDropListGroup, DialogModule],
   providers: [ValidationClient],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './project-page.html',
@@ -19,7 +21,10 @@ import { ResultCard } from '@app/result-card/result-card';
 export class ProjectPage {
   readonly cwd = input.required<string>();
   readonly client = inject(ValidationClient);
+  private readonly dialog = inject(Dialog);
   readonly search = signal('');
+  readonly runsFirst = computed(() => this.client.plan()?.options?.runsFirst ?? false);
+  readonly newestRunsFirst = computed(() => this.client.plan()?.options?.newestRunsFirst ?? false);
 
   readonly expandedHistory = signal(false);
   readonly expandedDurations = signal<ReadonlySet<string>>(new Set());
@@ -53,7 +58,9 @@ export class ProjectPage {
     const runs = this.client.state()?.runs ?? [];
     const recent = runs.slice(-5);
 
-    return this.expandedHistory() ? runs : runs.filter(run => recent.includes(run) || run.id === this.selectedId());
+    const visible = this.expandedHistory() ? runs : runs.filter(run => recent.includes(run) || run.id === this.selectedId());
+
+    return this.newestRunsFirst() ? [...visible].reverse() : visible;
   });
 
   constructor() {
@@ -89,10 +96,14 @@ export class ProjectPage {
     void this.client.save(editPlan(editPlan(plan, name, 'add'), name, policy));
   }
 
-  useNix(value: boolean): void {
-    const plan = this.client.state()?.plan;
+  openOptions(template: TemplateRef<unknown>): void {
+    this.dialog.open(template, { ariaLabelledBy: 'options-title', autoFocus: '#options-close' });
+  }
 
-    if (plan) void this.client.save({ ...plan, useNix: value });
+  saveOption(key: 'useNix' | 'runsFirst' | 'newestRunsFirst', value: boolean): void {
+    const plan = this.client.plan();
+
+    if (plan) void this.client.save({ ...plan, options: { ...plan.options, [key]: value } });
   }
 
   parameters(name: string): [string, Parameter][] {
